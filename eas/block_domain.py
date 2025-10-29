@@ -15,7 +15,7 @@ class Thing:
     name: str
     # variables describe which attributes compose the state for this Thing.
     # They are class-level and should not be part of the dataclass init/fields.
-    variables: ClassVar[Tuple[str, ...]]
+    variables: ClassVar[Dict[str, Union[Type, str]]]
 
     @property
     def state(self) -> State:
@@ -37,7 +37,7 @@ class Pose(Thing):
     orientation: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     clear: bool = True
     occupied_by: Optional['Object'] = None
-    variables: ClassVar[Tuple[str, ...]] = ("clear", "occupied_by")
+    variables = {"clear": bool, "occupied_by": 'Object'}
 
 @dataclass
 class Object(Thing):
@@ -45,14 +45,14 @@ class Object(Thing):
     at_top: bool = True
     on: Optional['Object'] = None
     below: Optional['Object'] = None
-    variables: ClassVar[Tuple[str, ...]] = ("at", "at_top", "on", "below")
+    variables = {"at": 'Pose', "at_top": bool, "on": 'Object', "below": 'Object'}
 
 @dataclass
 class Robot(Thing):
     at: Pose
     holding: Optional[Object] = None
     gripper_empty: bool = True
-    variables: ClassVar[Tuple[str, ...]] = ("at", "holding", "gripper_empty")
+    variables = {"at": 'Pose', "holding": 'Object', "gripper_empty": bool}
 
 move_parameters = {'robot': Robot,
                    'start_pose': Pose,
@@ -96,7 +96,7 @@ def apply_action(parameters: Dict[str, Thing], conditions: List[Condition], effe
 
 @dataclass
 class Domain:
-    things: Dict[Type[Thing], List[Thing]]
+    things: Dict[str, List[Thing]]
     states: List[State] = field(default_factory=list)
     actions: Dict[str, Tuple[Dict[str, Thing], List[Condition], List[Callable]]] = field(default_factory=dict)
 
@@ -116,9 +116,9 @@ block_2 = Object(name="block2", at=p3)
 block_3 = Object(name="block3", at=p4)
 
 things_init = {
-    Robot: [robot],
-    Pose: [p1, p2, p3, p4, p5],
-    Object: [block_1, block_2, block_3],
+    "Robot": [robot],
+    "Pose": [p1, p2, p3, p4, p5],
+    "Object": [block_1, block_2, block_3],
 }
 
 init_state = State({})
@@ -126,16 +126,10 @@ for thing_list in things_init.values():
     for thing in thing_list:
         init_state.update(thing.state)
 
-# print(init_state)
-
 domain = Domain(things=things_init, states=[init_state], actions={'move': (move_parameters, move_conditions, move_effects)})
 
 # Build Domain Transition Graphs (DTGs)
 dtg = {}
-# robot_vars = list(list(robot.state.values())[0].keys())
-robot_vars = []
-for attr in list(robot.__annotations__.keys())[1:]:
-    robot_vars.append(f"robot1_{attr}")
 
 @dataclass
 class Node:
@@ -156,22 +150,33 @@ class Node:
 
 for thing_type in domain.things.values():
     for thing in thing_type:
-        for variable in thing.variables:
-            var_type = type(getattr(thing, variable))
-            print(thing.name, var_type)
-            vars = domain.things.get(var_type, [])
+        for var_type_name, var_type in thing.variables.items():
+            if type(var_type) is str:
+                vars = domain.things.get(var_type, [])
+            else:
+                vars = (True, False)
+
             for var in vars:
-                node_name = f"{thing.name}_{variable}_{var.name if hasattr(var, 'name') else var}"
+                var_name = getattr(var, 'name', var)
+                node_name = f"{thing.name}_{var_type_name}_{var_name}"
                 dtg[node_name] = Node(name=node_name, values=(thing, var))
 
-                print(dtg[node_name])
+                # print(dtg[node_name])
 
 # Get only nodes involving robot, move actions are only for robots
 robot_nodes = [node for node in dtg.values() if type(node.values[0]) is Robot]
 
 for node in robot_nodes:
+    value_types = [type(v) for v in node.values]
+    print(value_types in list(move_parameters.values()))
+    if value_types not in list(move_parameters.values()):
+            continue
     other_nodes = [n for n in robot_nodes if n != node]
     for other in other_nodes:
+        value_types = [type(v) for v in node.values]
+        if value_types != list(move_parameters.values()):
+            continue
+
         edge = ('move', other)
         if edge not in node.edges:
             node.edges.append(edge)
