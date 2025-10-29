@@ -20,6 +20,13 @@ class Pose(Thing):
     clear: bool = True
     occupied_by: Optional['Object'] = None
 
+    @property
+    def state(self) -> State:
+        return State({
+            f"{self.name}": {f"{self.name}_clear": self.clear,
+                             f"{self.name}_occupied_by": self.occupied_by.name if self.occupied_by else None}
+        })
+
 @dataclass
 class Object(Thing):
     name: str
@@ -28,6 +35,17 @@ class Object(Thing):
     on: Optional['Object'] = None
     below: Optional['Object'] = None
 
+    @property
+    def state(self) -> State:
+        return State({
+            f"{self.name}": {
+                f"{self.name}_at": self.at.name,
+                f"{self.name}_at_top": self.at_top,
+                f"{self.name}_on": self.on.name if self.on else None,
+                f"{self.name}_below": self.below.name if self.below else None
+            }
+        })
+
 @dataclass
 class Robot(Thing):
     name: str
@@ -35,6 +53,15 @@ class Robot(Thing):
     holding: Optional[Object] = None
     gripper_empty: bool = True
 
+    @property
+    def state(self) -> State:
+        return State({
+            f"{self.name}": {
+                f"{self.name}_at": self.at.name,
+                f"{self.name}_holding": self.holding.name if self.holding else None,
+                f"{self.name}_gripper_empty": self.gripper_empty
+            }
+        })
 
 move_conditions = [lambda robot, start_pose, target_pose: robot.at == start_pose,
                    lambda robot, start_pose, target_pose: robot.at != target_pose]
@@ -72,23 +99,13 @@ things = {
     'objects': [block_1, block_2, block_3],
 }
 
-domain = Domain(things=things, actions={'move': (things, move_conditions, move_effects)})
+init_state = State({})
+for thing_list in things.values():
+    for thing in thing_list:
+        init_state.update(thing.state)
+
+print(init_state)
+
+domain = Domain(things=things, states=[init_state],actions={'move': (things, move_conditions, move_effects)})
 
 # Build Domain Transition Graphs (DTGs)
-
-p_dict = {pose.name: pose for pose in things['poses']}
-poses = Enum('PosesEnum', p_dict)
-
-@dataclass
-class TestRobot:
-    at: poses
-
-    @property
-    def at_vals(self):
-        return list(poses)
-
-r = TestRobot(at=poses['p1'])
-print(r.at.name)
-
-for p in r.at_vals:
-    print(p.value)
