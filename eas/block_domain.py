@@ -15,8 +15,7 @@ class Thing:
     name: str
     # variables describe which attributes compose the state for this Thing.
     # They are class-level and should not be part of the dataclass init/fields.
-    variables: ClassVar[Dict[str, Union[Type, str]]]
-
+    variables: ClassVar[Tuple[str, ...]] = ()
     @property
     def state(self) -> State:
         state = State({})
@@ -32,27 +31,35 @@ class Thing:
         return self.state.__str__()
 
 @dataclass
+class NonePose(Thing):
+    name: str = "NonePose"
+
+@dataclass
+class NoneObj(Thing):
+    name: str = "NoneObject"
+
+@dataclass
 class Pose(Thing):
     pos: Tuple[float, float, float]
     orientation: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     clear: bool = True
-    occupied_by: Optional['Object'] = None
-    variables = {"clear": bool, "occupied_by": 'Object'}
+    occupied_by: 'Object | NoneObj' = field(default_factory=NoneObj)
+    variables = ("clear", "occupied_by")
 
 @dataclass
 class Object(Thing):
-    at: Pose
+    at: Pose | NonePose
     at_top: bool = True
-    on: Optional['Object'] = None
-    below: Optional['Object'] = None
-    variables = {"at": 'Pose', "at_top": bool, "on": 'Object', "below": 'Object'}
+    on: 'Object | NoneObj' = field(default_factory=NoneObj)
+    below: 'Object | NoneObj' = field(default_factory=NoneObj)
+    variables = ("at", "at_top", "on", "below")
 
 @dataclass
 class Robot(Thing):
     at: Pose
-    holding: Optional[Object] = None
+    holding: 'Object | NoneObj' = field(default_factory=NoneObj)
     gripper_empty: bool = True
-    variables = {"at": 'Pose', "holding": 'Object', "gripper_empty": bool}
+    variables = ("at", "holding", "gripper_empty")
 
 move_parameters = {'robot': Robot,
                    'start_pose': Pose,
@@ -96,7 +103,7 @@ def apply_action(parameters: Dict[str, Thing], conditions: List[Condition], effe
 
 @dataclass
 class Domain:
-    things: Dict[str, List[Thing]]
+    things: Dict[Type[Thing], List[Thing]]
     states: List[State] = field(default_factory=list)
     actions: Dict[str, Tuple[Dict[str, Thing], List[Condition], List[Callable]]] = field(default_factory=dict)
 
@@ -116,9 +123,9 @@ block_2 = Object(name="block2", at=p3)
 block_3 = Object(name="block3", at=p4)
 
 things_init = {
-    "Robot": [robot],
-    "Pose": [p1, p2, p3, p4, p5],
-    "Object": [block_1, block_2, block_3],
+    Robot: [robot],
+    Pose: [p1, p2, p3, p4, p5],
+    Object: [block_1, block_2, block_3],
 }
 
 init_state = State({})
@@ -135,6 +142,7 @@ dtg = {}
 class Node:
     name: str
     values: Tuple[Any, ...]
+    applicable_actions: List[str] = field(default_factory=list)
     edges: List[Tuple[str, Any]] = field(default_factory=list)
 
     def __str__(self):
@@ -148,37 +156,58 @@ class Node:
 # Then for each variable, find all possible values it can take and build nodes
 # Finally, connect nodes based on possible actions
 
+# TODO: Need to take care of the cases where block is on/below itself
 for thing_type in domain.things.values():
     for thing in thing_type:
-        for var_type_name, var_type in thing.variables.items():
-            if type(var_type) is str:
-                vars = domain.things.get(var_type, [])
-            else:
-                vars = (True, False)
+        for attribute in thing.variables:
+            var_type = type(getattr(thing, attribute))
+
+            if var_type is NonePose:
+                var_type = Pose
+            elif var_type is NoneObj:
+                var_type = Object
+
+            vars = domain.things.get(var_type, [])
 
             for var in vars:
                 var_name = getattr(var, 'name', var)
-                node_name = f"{thing.name}_{var_type_name}_{var_name}"
+                node_name = f"{thing.name}_{attribute}_{var_name}"
                 dtg[node_name] = Node(name=node_name, values=(thing, var))
+                # Maybe add applicable actions to the nodes here based on the values
 
                 # print(dtg[node_name])
 
 # Get only nodes involving robot, move actions are only for robots
 robot_nodes = [node for node in dtg.values() if type(node.values[0]) is Robot]
 
-for node in robot_nodes:
-    value_types = [type(v) for v in node.values]
-    print(value_types in list(move_parameters.values()))
-    if value_types not in list(move_parameters.values()):
-            continue
-    other_nodes = [n for n in robot_nodes if n != node]
-    for other in other_nodes:
-        value_types = [type(v) for v in node.values]
-        if value_types != list(move_parameters.values()):
-            continue
+# for node in robot_nodes:
+#     value_types = [type(v) for v in node.values]
+#     if value_types not in list(move_parameters.values()):
+#             continue
+#     other_nodes = [n for n in robot_nodes if n != node]
+#     for other in other_nodes:
+#         value_types = [type(v) for v in node.values]
+#         if value_types != list(move_parameters.values()):
+#             continue
 
-        edge = ('move', other)
-        if edge not in node.edges:
-            node.edges.append(edge)
+#         edge = ('move', other)
+#         if edge not in node.edges:
+#             node.edges.append(edge)
 
-    print(node)
+#     print(node)
+
+new_dtg = {}
+
+# Get all values for corresponding parameters in move action
+move_param_vals = {}
+nodes = dtg.values()
+relevant_nodes = []
+for param_name, param in move_parameters.items():
+    move_param_vals[param_name] = domain.things.get(param, [])
+
+    for node in nodes:
+        if param.name in node.values:
+            relevant_nodes.append(node)
+            print(node)
+
+    nodes = relevant_nodes
