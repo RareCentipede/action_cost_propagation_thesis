@@ -40,42 +40,6 @@ class Thing:
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
 
-def is_action_applicable(conditions: List[SimpleCondition], parameters: Dict[str, Thing]) -> bool:
-    for cond in conditions:
-        parent_name, variable_name, target_name = cond
-        param = parameters.get(parent_name)
-        target = parameters.get(target_name)
-
-        current_val = getattr(param, variable_name, None) if param else None
-        if current_val != target:
-            return False
-
-    return True
-
-def apply_action(state: State, conditions: List[SimpleCondition], parameters: Dict[str, Thing], effects: List[SimpleCondition]) -> State:
-    new_state = deepcopy(state)
-
-    action_applicable = is_action_applicable(conditions, parameters)
-    if not action_applicable:
-        return State({})
-
-    for effect in effects:
-        parent_name, variable_name, target_name = effect
-        parent = parameters.get(parent_name)
-
-        if not parent:
-            return State({})
-
-        state_key = f"{parent.name}_{variable_name}"
-        target = parameters.get(target_name)
-
-        if not target:
-            return State({})
-
-        new_state.update({state_key: target.name})
-
-    return new_state
-
 @dataclass
 class Domain:
     things: Dict[Type[Thing] | str, List[Thing] | Thing]
@@ -113,6 +77,42 @@ class Domain:
             thing = self.things[parent_name]
             if thing and hasattr(thing, variable_name):
                 setattr(thing, variable_name, value)
+
+def is_action_applicable(conditions: List[SimpleCondition], parameters: Dict[str, Thing]) -> bool:
+    for cond in conditions:
+        parent_name, variable_name, target_name = cond
+        param = parameters.get(parent_name)
+        target = parameters.get(target_name)
+
+        current_val = getattr(param, variable_name, None) if param else None
+        if current_val != target:
+            return False
+
+    return True
+
+def apply_action(state: State, conditions: List[SimpleCondition], parameters: Dict[str, Thing], effects: List[SimpleCondition]) -> State:
+    new_state = deepcopy(state)
+
+    action_applicable = is_action_applicable(conditions, parameters)
+    if not action_applicable:
+        return State({})
+
+    for effect in effects:
+        parent_name, variable_name, target_name = effect
+        parent = parameters.get(parent_name)
+
+        if not parent:
+            return State({})
+
+        state_key = f"{parent.name}_{variable_name}"
+        target = parameters.get(target_name)
+
+        if not target:
+            return State({})
+
+        new_state.update({state_key: target.name})
+
+    return new_state
 
 @dataclass
 class Node:
