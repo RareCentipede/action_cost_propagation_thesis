@@ -40,58 +40,79 @@ class Thing:
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name})"
 
-def is_action_applicable(state: State, conditions: List[SimpleCondition]) -> bool:
+def is_action_applicable(conditions: List[SimpleCondition], parameters: Dict[str, Thing]) -> bool:
     for cond in conditions:
-        parent_name, variable_name, value = cond
-        state_key = f"{parent_name}_{variable_name}"
-        current_val = state.get(state_key, None)
+        parent_name, variable_name, target_name = cond
+        param = parameters.get(parent_name)
+        target = parameters.get(target_name)
 
-        if current_val != value:
+        current_val = getattr(param, variable_name, None) if param else None
+        if current_val != target:
             return False
 
     return True
 
-def apply_action(state: State, conditions: List[SimpleCondition], effects: List[SimpleCondition]) -> State | None:
+def apply_action(state: State, conditions: List[SimpleCondition], parameters: Dict[str, Thing], effects: List[SimpleCondition]) -> State:
     new_state = deepcopy(state)
 
-    action_applicable = is_action_applicable(state, conditions)
+    action_applicable = is_action_applicable(conditions, parameters)
     if not action_applicable:
-        return None
+        return State({})
 
     for effect in effects:
-        parent_name, variable_name, value = effect
-        state_key = f"{parent_name}_{variable_name}"
-        new_state[state_key] = value
+        parent_name, variable_name, target_name = effect
+        parent = parameters.get(parent_name)
+
+        if not parent:
+            return State({})
+
+        state_key = f"{parent.name}_{variable_name}"
+        target = parameters.get(target_name)
+
+        if not target:
+            return State({})
+
+        new_state.update({state_key: target.name})
 
     return new_state
 
 @dataclass
 class Domain:
-    things: Dict[Type[Thing], List[Thing]]
-    states: List[State] = field(default_factory=list)
+    things: Dict[Type[Thing] | str, List[Thing] | Thing]
+    states: List[State]
+    goal_state: State
     actions: Dict[str, Tuple[Dict[str, Thing],
-                             Sequence[SimpleCondition | ComputedCondition],
-                             Sequence[SimpleCondition | ComputedCondition]]] = field(default_factory=dict)
+                             List[SimpleCondition] | List[ComputedCondition],
+                             List[SimpleCondition] | List[ComputedCondition]]] = field(default_factory=dict)
 
+    def map_name_to_things(self):
+        things_copy = deepcopy(self.things)
+        for things in things_copy.values():
+            if isinstance(things, list):
+                for thing in things:
+                    self.things[thing.name] = thing
 
     @property
     def current_state(self) -> State:
         return self.states[-1] if self.states else State({})
 
+    @property
+    def goal_reached(self) -> bool:
+        for goal_key, goal_value in self.goal_state.items():
+            current_value = self.current_state.get(goal_key, None)
+            if current_value != goal_value:
+                return False
+
+        return True
+
     def update_state(self, new_state: State):
         self.states.append(new_state)
 
         for name, value in new_state.items():
-            parent_name, variable_name = name.split('_')
-
-            match parent_name[:-1]:
-                case 'robot':
-                    thing_type = Robot
-                case 'object':
-                    thing_type = Object
-                case 'pose':
-                    thing_type = Pose
-                case _:             
+            parent_name, variable_name = tuple(name.split('_', 1))
+            thing = self.things[parent_name]
+            if thing and hasattr(thing, variable_name):
+                setattr(thing, variable_name, value)
 
 @dataclass
 class Node:
