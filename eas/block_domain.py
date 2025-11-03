@@ -5,7 +5,9 @@ from dataclasses import dataclass, field
 from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, Callable, Type, ClassVar, cast
 from abc import abstractmethod
 
-from eas.EAS import Thing, is_action_applicable, apply_action, State, SimpleCondition, ComputedCondition, Condition, Domain
+from eas.EAS import (Thing, State, SimpleCondition, Domain, Node,
+                     is_action_applicable, apply_action,
+                     ComputedCondition, Condition)
 
 @dataclass(eq=False)
 class NonePose(Thing):
@@ -99,21 +101,6 @@ domain = Domain(things=things_init, states=[init_state], actions={'move': (move_
 
 # Build Domain Transition Graphs (DTGs)
 dtg = {}
-
-@dataclass
-class Node:
-    name: str
-    type: str
-    values: Tuple[Any, ...]
-    applicable_actions: List[str] = field(default_factory=list)
-    edges: List[Tuple[str, 'Node']] = field(default_factory=list)
-
-    def __str__(self):
-        node_name = f"Node: {self.name}, "
-        values = f"values: {[f'{value.name}: {type(value).__name__}' if hasattr(value, 'name') else value for value in self.values]}, "
-        applicable_actions = f"applicable_actions: {self.applicable_actions}, "
-        edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
-        return node_name + values + applicable_actions + edges
 
 # Different approach:
 # First get all the variables (predicates)
@@ -237,7 +224,6 @@ while not goal_reached:
         node_name = f"{var}_{val}"
         current_state_nodes.append(dtg.get(node_name, None))
 
-
     # Here you can implement the logic to choose and apply actions based on the DTG
     visited_node = []
     for node in current_state_nodes:
@@ -261,9 +247,9 @@ while not goal_reached:
 
                 # print(node)
 
-                if is_action_applicable(params, list(action_conds)):
-                    apply_action(params, action_conds, domain.actions.get(action_name, (None, [], []))[2])
-                    print(f"From Node: {node.name} --[{action_name}]--> To Node: {target_node.name}")
+                # if is_action_applicable(params, list(action_conds)):
+                    # apply_action(params, action_conds, domain.actions.get(action_name, (None, [], []))[2])
+                    # print(f"From Node: {node.name} --[{action_name}]--> To Node: {target_node.name}")
 
                 # if action_params is not None and action_conds is not None:
                 #     if is_action_applicable(params, list(action_conds)):

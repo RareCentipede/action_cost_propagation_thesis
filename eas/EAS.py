@@ -81,3 +81,18 @@ class Domain:
     @property
     def current_state(self) -> State:
         return self.states[-1] if self.states else State({})
+
+@dataclass
+class Node:
+    name: str
+    type: str
+    values: Tuple[Any, ...]
+    applicable_actions: List[str] = field(default_factory=list)
+    edges: List[Tuple[str, 'Node']] = field(default_factory=list)
+
+    def __str__(self):
+        node_name = f"Node: {self.name}, "
+        values = f"values: {[f'{value.name}: {type(value).__name__}' if hasattr(value, 'name') else value for value in self.values]}, "
+        applicable_actions = f"applicable_actions: {self.applicable_actions}, "
+        edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
+        return node_name + values + applicable_actions + edges
