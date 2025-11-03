@@ -77,10 +77,8 @@ class Robot(Thing):
 move_parameters = {'robot': Robot,
                    'start_pose': Pose,
                    'target_pose': Pose}
-move_conditions = [SimpleCondition(('robot', 'at', 'start_pose')),
-                   SimpleCondition(('target_pose', 'occupied_by', '~robot'))]
-move_effects = [SimpleCondition(('robot', 'at', 'target_pose')),
-                SimpleCondition(('start_pose', 'occupied_by', '~robot'))]
+move_conditions = [SimpleCondition(('robot', 'at', 'start_pose'))]
+move_effects = [SimpleCondition(('robot', 'at', 'target_pose'))]
 
 pick_parameters = {'robot': Robot,
                    'object': Object,
@@ -106,17 +104,24 @@ place_effects = [SimpleCondition(('robot', 'holding', NoneObj())),
                  SimpleCondition(('target_pose', 'occupied_by', 'object')),
                  SimpleCondition(('target_pose', 'clear', False))]
 
-def apply_action(parameters: Dict[str, Thing], conditions: List[SimpleCondition], effects: List[SimpleCondition]) -> bool:
+def is_action_applicable(parameters: Dict[str, Thing], conditions: List[SimpleCondition]) -> bool:
     for cond in conditions:
         if isinstance(cond, Tuple):
             parent_name, attr, value = cond
             parent = parameters[parent_name]
             if isinstance(value, str):
                 value = parameters[value]
+                current_val = getattr(parent, attr)
+                print(parent, attr, value, current_val)
 
-            if not (getattr(parent, attr) == value):
-                if not (isinstance(value, str) and value.startswith('~')):
-                    return False
+            if not (current_val == value):
+                return False
+
+    return True
+
+def apply_action(parameters: Dict[str, Thing], conditions: List[SimpleCondition], effects: List[SimpleCondition]) -> bool:
+    if not is_action_applicable(parameters, conditions):
+        return False
 
     for effect in effects:
         if isinstance(effect, Tuple):
@@ -147,6 +152,9 @@ p2 = Pose(name="p2", pos=(0, 0, 0))
 p3 = Pose(name="p3", pos=(1, 1, 0))
 p4 = Pose(name="p4", pos=(1, 1, 0))
 p5 = Pose(name="p5", pos=(2, 2, 0))
+p6 = Pose(name="p6", pos=(2, 2, 0))
+p7 = Pose(name="p7", pos=(3, 3, 0))
+p8 = Pose(name="p8", pos=(3, 3, 0))
 
 robot = Robot(name="robot1", at=p1)
 block_1 = Object(name="block1", at=p2)
@@ -164,7 +172,9 @@ for thing_list in things_init.values():
     for thing in thing_list:
         init_state.update(thing.state)
     
-domain = Domain(things=things_init, states=[init_state], actions={'move': (move_parameters, move_conditions, move_effects)})
+domain = Domain(things=things_init, states=[init_state], actions={'move': (move_parameters, move_conditions, move_effects),
+                                                                  'pick': (pick_parameters, pick_conditions, pick_effects),
+                                                                  'place': (place_parameters, place_conditions, place_effects)})
 
 # Build Domain Transition Graphs (DTGs)
 dtg = {}
@@ -206,7 +216,8 @@ for thing_type, things in domain.things.items():
                 var_type = Object
                 vars = [cast(Thing, NoneObj())]
             elif var_type is Pose:
-                vars = [cast(Thing, NonePose())]
+                if thing_type is not Robot:
+                    vars = [cast(Thing, NonePose())]
             elif var_type is Object:
                 vars = [cast(Thing, NoneObj())]
 
@@ -228,8 +239,6 @@ for thing_type, things in domain.things.items():
                 else:
                     dtg[node_name].applicable_actions = ['pick', 'place']
 
-                # print(dtg[node_name])
-
 # Get only nodes involving robot, move actions are only for robots
 robot_nodes = [node for node in dtg.values() if type(node.values[0]) is Robot]
 
@@ -248,20 +257,7 @@ for node in move_nodes:
 
 pick_place_nodes = [node for node in dtg.values() if 'move' not in node.applicable_actions]
 node_types = set(node.type for node in pick_place_nodes)
-# for node in pick_place_nodes:
-#     node_type = node.type
-#     other_nodes = [n for n in pick_place_nodes if n != node]
 
-#     match node_type:
-#         case 'holding':
-#             other_nodes = [n for n in other_nodes if n.type == 'holding']
-#             node.edges = [('pick', other) for other in other_nodes]
-
-#             for other in other_nodes:
-#                 other.edges.append(('place', node))
-
-    # print(node)
-print(node_types)
 for node_type in node_types:
     selected_nodes = [node for node in pick_place_nodes if node.type == node_type]
 
@@ -293,5 +289,62 @@ for node_type in node_types:
                 other.edges.append(('place', none_node))
 
 
-for node in dtg.values():
-    print(node)
+# for node in dtg.values():
+#     print(node)
+goal_state = State({
+    'block1_at': p6,
+    'block2_at': p7,
+    'block3_at': p8
+})
+
+goal_reached = False
+
+while not goal_reached:
+    # Check if goal state is reached
+    goal_conds = []
+    for goal_var, goal_val in goal_state.items():
+        current_val = domain.current_state.get(goal_var, None)
+        goal_conds.append(current_val == goal_val)
+
+    if all(goal_conds):
+        goal_reached = True
+        print("Goal reached!")
+        break
+
+    current_state_nodes = []
+    for var, val in domain.current_state.items():
+        node_name = f"{var}_{val}"
+        current_state_nodes.append(dtg.get(node_name, None))
+
+
+    # Here you can implement the logic to choose and apply actions based on the DTG
+    visited_node = []
+    for node in current_state_nodes:
+        if node and node not in visited_node:
+            visited_node.append(node)
+
+            for edge in node.edges:
+                action_name, target_node = edge
+
+                action = domain.actions.get(action_name, None)
+                if action is None:
+                    continue
+
+                action_conds = action[1]
+                action_params = action[0]
+
+                param_names = list(action_params.keys())
+                params = {param_names[0]: node.values[0],
+                          param_names[1]: node.values[1],
+                          param_names[2]: target_node.values[1]}
+
+                # print(node)
+
+                if is_action_applicable(params, list(action_conds)):
+                    apply_action(params, action_conds, domain.actions.get(action_name, (None, [], []))[2])
+                    print(f"From Node: {node.name} --[{action_name}]--> To Node: {target_node.name}")
+
+                # if action_params is not None and action_conds is not None:
+                #     if is_action_applicable(params, list(action_conds)):
+                #         apply_action(params, action_conds, domain.actions.get(action_name, (None, [], []))[2])
+                #         print(f"From Node: {node.name} --[{action_name}]--> To Node: {target_node.name}")
