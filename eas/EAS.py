@@ -99,7 +99,11 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
             cond = cast(SimpleCondition, cond)
             parent_name, variable_name, target_name = cond
             param = parameters.get(parent_name)
-            target = parameters.get(target_name)
+
+            if type(target_name) is str:
+                target = parameters.get(target_name)
+            else:
+                target = target_name
         else:
             cond = cast(ComputedCondition, cond)
             raise ValueError("ComputedCondition conditions are not supported in is_action_applicable yet, what did you do???")
@@ -133,10 +137,14 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
         state_key = f"{parent.name}_{variable_name}"
         target = parameters.get(target_name)
 
-        if not target:
-            return State({})
-
-        new_state.update({state_key: target.name})
+        if type(target_name) is str:
+            target = parameters.get(target_name)
+            target = target.name if target else None
+        elif hasattr(target_name, 'name'):
+            target = target_name.name
+        else:
+            target = target_name
+        new_state.update({state_key: target})
 
     return new_state
 
@@ -154,14 +162,14 @@ def parse_action_params(action_name: str, node: Node, target: Node) -> Dict[str,
             action_params = {
                 'robot': node.values[0],
                 'object': node.values[1],
-                'object_pose': target.values[1]
+                'object_pose': node.values[2]
             }
 
         case 'place':
             action_params = {
                 'robot': node.values[0],
-                'object': target.values[0],
-                'target_pose': node.values[1]
+                'object': node.values[1],
+                'target_pose': target.values[-1]
             }
 
         case _:

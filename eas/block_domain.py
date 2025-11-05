@@ -54,7 +54,8 @@ pick_conditions = [SimpleCondition(('robot', 'at', 'object_pose')),
 pick_effects = [SimpleCondition(('robot', 'holding', 'object')),
                 SimpleCondition(('robot', 'gripper_empty', False)),
                 SimpleCondition(('object', 'at', NonePose())),
-                SimpleCondition(('object_pose', 'occupied_by', NoneObj()))]
+                SimpleCondition(('object_pose', 'occupied_by', NoneObj())),
+                SimpleCondition(('object_pose', 'clear', True))]
 
 place_parameters = {'robot': Robot,
                     'object': Object,
@@ -93,11 +94,11 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
 
         for block in domain.things.get(Object, []):
             node_name = f"{block.name}_at_{pose.name}"
-            block_dtg[node_name] = Node(name=node_name, values=(block, pose))
+            block_dtg[node_name] = Node(name=node_name, values=(robot, block, pose))
 
-            none_node_name = f"{block.name}_at_None"
+            none_node_name = f"{block.name}_at_NonePose"
             if block_dtg.get(none_node_name, None) is None:
-                block_dtg[none_node_name] = Node(name=none_node_name, values=(block, NonePose()))
+                block_dtg[none_node_name] = Node(name=none_node_name, values=(robot, block, NonePose()))
 
     robot_nodes = list(robot_dtg.values())
     while robot_nodes:
@@ -112,10 +113,16 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
     block_nodes = list(block_dtg.values())
     while block_nodes:
         node = block_nodes.pop(0)
-        thing, value = node.values
+        if len(node.values) == 3:
+            _, thing, value = node.values
+        else:
+            thing, value = node.values
 
         for other_node in block_nodes:
-            other_thing, other_value = other_node.values
+            if len(other_node.values) == 3:
+                _, other_thing, other_value = other_node.values
+            else:
+                other_thing, other_value = other_node.values
 
             if thing.name != other_thing.name:
                 continue
