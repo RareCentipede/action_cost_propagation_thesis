@@ -73,3 +73,54 @@ place_effects = [SimpleCondition(('robot', 'holding', NoneObj())),
 block_domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (move_parameters, move_conditions, move_effects),
                                                                            'pick': (pick_parameters, pick_conditions, pick_effects),
                                                                            'place': (place_parameters, place_conditions, place_effects)})
+
+def create_domatin_transition_graph(domain: Domain) -> Dict[str, Node]:
+    robot_dtg = {}
+    block_dtg = {}
+
+    robots = domain.things.get(Robot, [])
+    if robots:
+        robot = robots[0]
+
+    for pose in domain.things.get(Pose, []):
+        node_name = f"{robot.name}_at_{pose.name}"
+        robot_dtg[node_name] = Node(name=node_name, values=(robot, pose))
+
+        for block in domain.things.get(Object, []):
+            node_name = f"{block.name}_at_{pose.name}"
+            block_dtg[node_name] = Node(name=node_name, values=(block, pose))
+
+            none_node_name = f"{block.name}_at_None"
+            if block_dtg.get(none_node_name, None) is None:
+                block_dtg[none_node_name] = Node(name=none_node_name, values=(block, NonePose()))
+
+    robot_nodes = list(robot_dtg.values())
+    while robot_nodes:
+        node = robot_nodes.pop(0)
+
+        for other_node in robot_nodes:
+            edge = ('move', other_node)
+
+            node.edges.append(edge)
+            other_node.edges.append(('move', node))
+
+    block_nodes = list(block_dtg.values())
+    while block_nodes:
+        node = block_nodes.pop(0)
+        thing, value = node.values
+
+        for other_node in block_nodes:
+            other_thing, other_value = other_node.values
+
+            if thing.name != other_thing.name:
+                continue
+
+            if isinstance(value, NonePose):
+                node.edges.append(('place', other_node))
+                other_node.edges.append(('pick', node))
+            elif isinstance(other_value, NonePose):
+                other_node.edges.append(('place', node))
+                node.edges.append(('pick', other_node))
+
+    dtg = {**robot_dtg, **block_dtg}
+    return dtg
