@@ -42,19 +42,20 @@ class Thing:
 
 @dataclass
 class Domain:
-    things: Dict[Type[Thing] | str, List[Thing] | Thing]
+    things: Dict[Type[Thing], List[Thing]]
     states: List[State]
     goal_state: State
     actions: Dict[str, Tuple[Dict[str, Thing],
                              List[SimpleCondition] | List[ComputedCondition],
                              List[SimpleCondition] | List[ComputedCondition]]] = field(default_factory=dict)
+    name_things: Dict[str, Thing] = field(default_factory=dict)
 
     def map_name_to_things(self):
         things_copy = deepcopy(self.things)
         for things in things_copy.values():
             if isinstance(things, list):
                 for thing in things:
-                    self.things[thing.name] = thing
+                    self.name_things[thing.name] = thing
 
     @property
     def current_state(self) -> State:
@@ -74,12 +75,25 @@ class Domain:
 
         for name, value in new_state.items():
             parent_name, variable_name = tuple(name.split('_', 1))
-            thing = self.things[parent_name]
+            thing = self.name_things[parent_name]
             if thing and hasattr(thing, variable_name):
                 setattr(thing, variable_name, value)
 
-def is_action_applicable(conditions: List[SimpleCondition], parameters: Dict[str, Thing]) -> bool:
+@dataclass
+class Node:
+    name: str
+    values: Tuple[Any, ...]
+    edges: List[Tuple[str, 'Node']] = field(default_factory=list)
+
+    def __str__(self):
+        node_name = f"Node: {self.name}, "
+        values = f"values: {[f'{value.name}: {type(value).__name__}' if hasattr(value, 'name') else value for value in self.values]}, "
+        edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
+        return node_name + values + edges
+
+def is_action_applicable(conditions: List[SimpleCondition] | List[ComputedCondition], parameters: Dict[str, Thing]) -> bool:
     for cond in conditions:
+        cond = cast(SimpleCondition, cond)
         parent_name, variable_name, target_name = cond
         param = parameters.get(parent_name)
         target = parameters.get(target_name)
@@ -114,20 +128,34 @@ def apply_action(state: State, conditions: List[SimpleCondition], parameters: Di
 
     return new_state
 
-@dataclass
-class Node:
-    name: str
-    type: str
-    values: Tuple[Any, ...]
-    applicable_actions: List[str] = field(default_factory=list)
-    edges: List[Tuple[str, 'Node']] = field(default_factory=list)
+def parse_action_params(action_name: str, node: Node, target: Node) -> Dict[str, Thing]:
+    action_params = {}
+    match action_name:
+        case 'move':
+            action_params = {
+                'robot': node.values[0],
+                'start_pose': node.values[1],
+                'target_pose': target.values[1]
+            }
 
-    def __str__(self):
-        node_name = f"Node: {self.name}, "
-        values = f"values: {[f'{value.name}: {type(value).__name__}' if hasattr(value, 'name') else value for value in self.values]}, "
-        applicable_actions = f"applicable_actions: {self.applicable_actions}, "
-        edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
-        return node_name + values + applicable_actions + edges
+        case 'pick':
+            action_params = {
+                'robot': node.values[0],
+                'object': node.values[1],
+                'object_pose': target.values[1]
+            }
+
+        case 'place':
+            action_params = {
+                'robot': node.values[0],
+                'object': target.values[0],
+                'target_pose': node.values[1]
+            }
+
+        case _:
+            raise ValueError(f"Unknown action: {action_name}")
+
+    return action_params
 
 # TODO: Plan tasks and timeline again
 # TODO: Think about experiments and expected results, types of graphs
