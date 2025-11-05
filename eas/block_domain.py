@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, Callable, Type, ClassVar, cast
 from abc import abstractmethod
 
-from eas.EAS import Thing, State, SimpleCondition, Domain, Node
+from eas.EAS import Thing, State, SimpleCondition, Domain, Node, ComputedCondition, Condition
 
 @dataclass(eq=False)
 class NonePose(Thing):
@@ -68,11 +68,18 @@ place_effects = [SimpleCondition(('robot', 'holding', NoneObj())),
                  SimpleCondition(('target_pose', 'occupied_by', 'object')),
                  SimpleCondition(('target_pose', 'clear', False))]
 
+move_conditions = cast(List[Condition], move_conditions)
+move_effects = cast(List[Condition], move_effects)
+pick_conditions = cast(List[Condition], pick_conditions)
+pick_effects = cast(List[Condition], pick_effects)
+place_conditions = cast(List[Condition], place_conditions)
+place_effects = cast(List[Condition], place_effects)
+
 block_domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (move_parameters, move_conditions, move_effects),
                                                                            'pick': (pick_parameters, pick_conditions, pick_effects),
                                                                            'place': (place_parameters, place_conditions, place_effects)})
 
-def create_domatin_transition_graph(domain: Domain) -> Dict[str, Node]:
+def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
     robot_dtg = {}
     block_dtg = {}
 

@@ -3,7 +3,7 @@ from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, C
 from eas.EAS import (Thing, State, SimpleCondition, Domain, Node,
                      is_action_applicable, apply_action, parse_action_params,
                      ComputedCondition, Condition)
-from eas.block_domain import Robot, Pose, Object, NonePose, NoneObj, block_domain, create_domatin_transition_graph
+from eas.block_domain import Robot, Pose, Object, NonePose, NoneObj, block_domain, create_domain_transition_graph
 
 p1 = Pose(name="p1", pos=(0, 0, 0))
 p2 = Pose(name="p2", pos=(0, 0, 0))
@@ -61,27 +61,34 @@ move_params = {
     'target_pose': p5
 }
 
-dtg = create_domatin_transition_graph(block_domain)
+dtg = create_domain_transition_graph(block_domain)
 
-current_nodes = []
-for var, val in block_domain.current_state.items():
-    dtg_key = f"{var}_{val}"
-    current_node = dtg.get(dtg_key, None)
+while not block_domain.goal_reached:
+    current_nodes = []
+    for var, val in block_domain.current_state.items():
+        dtg_key = f"{var}_{val}"
+        current_node = dtg.get(dtg_key, None)
 
-    if current_node:
-        current_nodes.append(current_node)
+        if current_node:
+            current_nodes.append(current_node)
+    # print(f"Current Nodes: {[node.name for node in current_nodes]}")
+    for node in current_nodes:
+        for edge in node.edges:
+            action_name, target = edge
 
-for node in current_nodes:
-    for edge in node.edges:
-        action_name, target = edge
+            action = block_domain.actions.get(action_name)
 
-        action = block_domain.actions.get(action_name)
+            if not action:
+                continue
 
-        if not action:
-            continue
+            _, conds, effects = action
 
-        _, conds, effects = action
-        action_params = parse_action_params(action_name, node, target)
+            # print(action_name, node.name, target.name)
+            action_params = parse_action_params(action_name, node, target)
+            action_applicable = is_action_applicable(conds, action_params)
 
-        action_applicable = is_action_applicable(conds, action_params)
-        print(f"{node.name} --[{action_name}]--> {target.name} | Applicable: {action_applicable}")
+            if action_applicable:
+                print(f"{node.name} --[{action_name}]--> {target.name} Executed")
+                new_state = apply_action(block_domain.current_state, conds, action_params, effects)
+                block_domain.update_state(new_state)
+                # print(block_domain.current_state)

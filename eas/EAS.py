@@ -46,12 +46,12 @@ class Domain:
     states: List[State]
     goal_state: State
     actions: Dict[str, Tuple[Dict[str, Thing],
-                             List[SimpleCondition] | List[ComputedCondition],
-                             List[SimpleCondition] | List[ComputedCondition]]] = field(default_factory=dict)
+                             List[Condition],
+                             List[Condition]]] = field(default_factory=dict)
     name_things: Dict[str, Thing] = field(default_factory=dict)
 
     def map_name_to_things(self):
-        things_copy = deepcopy(self.things)
+        things_copy = self.things.copy()
         for things in things_copy.values():
             if isinstance(things, list):
                 for thing in things:
@@ -73,9 +73,11 @@ class Domain:
     def update_state(self, new_state: State):
         self.states.append(new_state)
 
-        for name, value in new_state.items():
+        for name, value_name in new_state.items():
             parent_name, variable_name = tuple(name.split('_', 1))
             thing = self.name_things[parent_name]
+            value = self.name_things.get(value_name, value_name)
+
             if thing and hasattr(thing, variable_name):
                 setattr(thing, variable_name, value)
 
@@ -91,20 +93,25 @@ class Node:
         edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
         return node_name + values + edges
 
-def is_action_applicable(conditions: List[SimpleCondition] | List[ComputedCondition], parameters: Dict[str, Thing]) -> bool:
+def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing]) -> bool:
     for cond in conditions:
-        cond = cast(SimpleCondition, cond)
-        parent_name, variable_name, target_name = cond
-        param = parameters.get(parent_name)
-        target = parameters.get(target_name)
+        if type(cond) is tuple:
+            cond = cast(SimpleCondition, cond)
+            parent_name, variable_name, target_name = cond
+            param = parameters.get(parent_name)
+            target = parameters.get(target_name)
+        else:
+            cond = cast(ComputedCondition, cond)
+            raise ValueError("ComputedCondition conditions are not supported in is_action_applicable yet, what did you do???")
 
-        current_val = getattr(param, variable_name, None) if param else None
+        # print(param, variable_name)
+        current_val = getattr(param, variable_name, None)
         if current_val != target:
             return False
 
     return True
 
-def apply_action(state: State, conditions: List[SimpleCondition], parameters: Dict[str, Thing], effects: List[SimpleCondition]) -> State:
+def apply_action(state: State, conditions: List[Condition], parameters: Dict[str, Thing], effects: List[Condition]) -> State:
     new_state = deepcopy(state)
 
     action_applicable = is_action_applicable(conditions, parameters)
@@ -112,8 +119,13 @@ def apply_action(state: State, conditions: List[SimpleCondition], parameters: Di
         return State({})
 
     for effect in effects:
-        parent_name, variable_name, target_name = effect
-        parent = parameters.get(parent_name)
+        if type(effect) is tuple:
+            effect = cast(SimpleCondition, effect)
+            parent_name, variable_name, target_name = effect
+            parent = parameters.get(parent_name)
+        else:
+            effect = cast(ComputedCondition, effect)
+            raise ValueError("ComputedCondition effects are not supported in apply_action yet, what did you do???")
 
         if not parent:
             return State({})
