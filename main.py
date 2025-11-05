@@ -1,6 +1,7 @@
 from copy import deepcopy
 import random
 import numpy as np
+import time
 
 from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, Callable, Type, ClassVar, cast
 
@@ -44,13 +45,6 @@ block_domain.things = things_init
 block_domain.states.append(init_state)
 block_domain.goal_state = goal_state
 block_domain.map_name_to_things()
-
-mock_goal_state = deepcopy(init_state)
-mock_goal_state.update({
-    'block1_at': p6,
-    'block2_at': p7,
-    'block3_at': p8
-})
 # block_domain.update_state(mock_goal_state)
 
 move_conditions = block_domain.actions['move'][1]
@@ -79,16 +73,16 @@ while not block_domain.goal_reached:
     for var, val in block_domain.current_state.items():
         dtg_key = f"{var}_{val}"
         current_node = dtg.get(dtg_key, None)
-        # print(f"dtg_key: {var}_{val}, current_node: {current_node.name if current_node else None}")
+        print(f"dtg_key: {var}_{val}, current_node: {current_node.name if current_node else None}")
         if current_node:
             current_nodes.append(current_node)
 
     node_action_values = {}
-    print([node.name for node in current_nodes])
+    print(f"Current nodes: {[node.name for node in current_nodes]}")
 
     for node_id, node in enumerate(current_nodes):
         action_values = []
-        print([[e[0], e[1].name] for e in node.edges])
+        print(f"Node edges: {[[e[0], e[1].name] for e in node.edges]}")
 
         for edge in node.edges:
             # print(edge[0])
@@ -116,31 +110,51 @@ while not block_domain.goal_reached:
             if target in goal_nodes.values():
                 action_value += 1
 
+            goal_positions = [g_node.values[1] for g_node in goal_nodes.values()]
+            robot = action_params.get('robot')
+            robot = cast(Robot, robot)
+
             actions_in_target = [e[0] for e in target.edges]
             if 'pick' in actions_in_target:
                 action_value += 2
             elif 'place' in actions_in_target:
                 action_value += 3
+            elif 'move' in actions_in_target and target.values[1] in goal_positions and not robot.gripper_empty:
+                action_value += 4
 
             action_values.append(action_value)
 
         node_action_values[node_id] = [np.argmax(action_values), max(action_values)]
 
     # print(f"node_action_values: {node_action_values}")
-    best_node = np.argmax(np.array(list(node_action_values.values()))[:, 1])
-    action_id = node_action_values[best_node][0]
-    edge = current_nodes[best_node].edges[action_id]
+    while node_action_values:
+        best_node = np.argmax(np.array(list(node_action_values.values()))[:, 1])
+        best_node_key = list(node_action_values.keys())[best_node]
+        print(f"Node action values: {node_action_values}")
+        action_id = node_action_values[best_node_key][0]
+        edge = current_nodes[best_node_key].edges[action_id]
 
-    action_name, target = edge
-    action_params = parse_action_params(action_name, current_nodes[best_node], target)
+        action_name, target = edge
+        action_params = parse_action_params(action_name, current_nodes[best_node_key], target)
 
-    action = block_domain.actions.get(action_name)
-    action = cast(Tuple, action)
-    _, conds, effects = action
+        action = block_domain.actions.get(action_name)
+        action = cast(Tuple, action)
+        _, conds, effects = action
 
-    print(f"{current_nodes[best_node].name} --[{action_name}]--> {target.name} Executed")
-    new_state = apply_action(block_domain.current_state, conds, action_params, effects)
+        print(f"{current_nodes[best_node].name} --[{action_name}]--> {target.name} Executed")
+        new_state = apply_action(block_domain.current_state, conds, action_params, effects)
+
+        if len(block_domain.states) >= 2:
+            if new_state == block_domain.states[-2]:
+                node_action_values.pop(best_node)
+                continue
+            else:
+                break
+        else:
+            break
+
     block_domain.update_state(new_state)
+    time.sleep(0.1)
     # print(f"current state: {new_state}")
         # for edge in node.edges:
         #     action_name, target = edge
