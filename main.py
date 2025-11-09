@@ -73,7 +73,7 @@ while not block_domain.goal_reached:
     for var, val in block_domain.current_state.items():
         dtg_key = f"{var}_{val}"
         current_node = dtg.get(dtg_key, None)
-        print(f"dtg_key: {var}_{val}, current_node: {current_node.name if current_node else None}")
+        # print(f"dtg_key: {var}_{val}, current_node: {current_node.name if current_node else None}")
         if current_node:
             current_nodes.append(current_node)
 
@@ -82,7 +82,7 @@ while not block_domain.goal_reached:
 
     for node_id, node in enumerate(current_nodes):
         action_values = []
-        print(f"Node edges: {[[e[0], e[1].name] for e in node.edges]}")
+        # print(f"Node edges: {[[e[0], e[1].name] for e in node.edges]}")
 
         for edge in node.edges:
             # print(edge[0])
@@ -130,7 +130,7 @@ while not block_domain.goal_reached:
     while node_action_values:
         best_node = np.argmax(np.array(list(node_action_values.values()))[:, 1])
         best_node_key = list(node_action_values.keys())[best_node]
-        print(f"Node action values: {node_action_values}")
+        # print(f"Node action values: {node_action_values}")
         action_id = node_action_values[best_node_key][0]
         edge = current_nodes[best_node_key].edges[action_id]
 
@@ -146,6 +146,7 @@ while not block_domain.goal_reached:
 
         if len(block_domain.states) >= 2:
             if new_state == block_domain.states[-2]:
+                print("Reverted to previous state, choosing next best action...")
                 node_action_values.pop(best_node)
                 continue
             else:
@@ -153,7 +154,10 @@ while not block_domain.goal_reached:
         else:
             break
 
-    block_domain.update_state(new_state)
+    # for state in new_state.items():
+        # print(f"{state[0]}: {state[1]}")
+    if new_state:
+        block_domain.update_state(new_state)
     time.sleep(0.1)
     # print(f"current state: {new_state}")
         # for edge in node.edges:

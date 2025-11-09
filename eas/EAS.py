@@ -111,6 +111,8 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
         # print(param, variable_name)
         current_val = getattr(param, variable_name, None)
         if current_val != target:
+            param_name = param.name if param else None
+            print(f"Condition failed: {param_name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 
     return True
@@ -120,6 +122,7 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
 
     action_applicable = is_action_applicable(conditions, parameters)
     if not action_applicable:
+        print("Action not applicable!")
         return State({})
 
     for effect in effects:
@@ -132,7 +135,7 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
             raise ValueError("ComputedCondition effects are not supported in apply_action yet, what did you do???")
 
         if not parent:
-            return State({})
+            raise ValueError(f"Parent {parent_name} not found in parameters")
 
         state_key = f"{parent.name}_{variable_name}"
         target = parameters.get(target_name)
