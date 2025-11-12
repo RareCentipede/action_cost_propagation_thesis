@@ -112,7 +112,7 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
         current_val = getattr(param, variable_name, None)
         if current_val != target:
             param_name = param.name if param else None
-            print(f"Condition failed: {param_name}_{variable_name}, current: {current_val}, target: {target}")
+            # print(f"Condition failed: {param_name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 
     return True

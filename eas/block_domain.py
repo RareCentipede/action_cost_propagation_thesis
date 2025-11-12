@@ -76,7 +76,7 @@ pick_effects = cast(List[Condition], pick_effects)
 place_conditions = cast(List[Condition], place_conditions)
 place_effects = cast(List[Condition], place_effects)
 
-block_domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (move_parameters, move_conditions, move_effects),
+domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (move_parameters, move_conditions, move_effects),
                                                                            'pick': (pick_parameters, pick_conditions, pick_effects),
                                                                            'place': (place_parameters, place_conditions, place_effects)})
 
