@@ -1,14 +1,5 @@
-from copy import deepcopy
-import random
-import numpy as np
-import time
-
-from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, Callable, Type, ClassVar, cast
-
-from eas.EAS import (Thing, State, SimpleCondition, Domain, Node,
-                     is_action_applicable, apply_action, parse_action_params,
-                     ComputedCondition, Condition)
-from eas.block_domain import Robot, Pose, Object, NonePose, NoneObj, domain, create_domain_transition_graph
+from eas.EAS import State
+from eas.block_domain import Robot, Pose, Object, domain, create_domain_transition_graph
 from planners.basic_planner import solve_dtg_basic
 
 p1 = Pose(name="p1", pos=(0, 0, 0))

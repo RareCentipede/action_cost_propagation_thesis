@@ -1,11 +1,9 @@
 import numpy as np
 
-from enum import Enum
 from dataclasses import dataclass, field
-from typing import Any, Sequence, Tuple, List, Optional, NewType, Dict, Union, Callable, Type, ClassVar, cast
-from abc import abstractmethod
+from typing import Tuple, List, Dict, cast
 
-from eas.EAS import Thing, State, SimpleCondition, Domain, Node, ComputedCondition, Condition
+from eas.EAS import Thing, State, SimpleCondition, Domain, Node, Condition
 
 @dataclass(eq=False)
 class NonePose(Thing):

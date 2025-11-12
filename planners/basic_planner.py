@@ -1,4 +1,3 @@
-import time
 import numpy as np
 
 from eas.block_domain import Pose, Robot, Object
