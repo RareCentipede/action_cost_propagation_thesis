@@ -46,6 +46,8 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], domain: Domai
                 action_value += 4
             elif target.values[1] in current_block_positions and robot.gripper_empty and target.values[1] not in goal_positions:
                 action_value += 2
+            else:
+                action_value += 1
         elif action_name == 'pick':
             obj = action_params.get('object')
             obj = cast(Object, obj)

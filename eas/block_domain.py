@@ -75,8 +75,8 @@ place_conditions = cast(List[Condition], place_conditions)
 place_effects = cast(List[Condition], place_effects)
 
 domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (move_parameters, move_conditions, move_effects),
-                                                                           'pick': (pick_parameters, pick_conditions, pick_effects),
-                                                                           'place': (place_parameters, place_conditions, place_effects)})
+                                                                     'pick': (pick_parameters, pick_conditions, pick_effects),
+                                                                     'place': (place_parameters, place_conditions, place_effects)})
 
 def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
     robot_dtg = {}

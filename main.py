@@ -37,7 +37,6 @@ domain.things = things_init
 domain.states.append(init_state)
 domain.goal_state = goal_state
 domain.map_name_to_things()
-# block_domain.update_state(mock_goal_state)
 
 dtg = create_domain_transition_graph(domain)
 
