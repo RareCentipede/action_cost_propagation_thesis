@@ -10,16 +10,19 @@ p5 = Pose(name="p5", pos=(2, 2, 0))
 p6 = Pose(name="p6", pos=(2, 2, 0))
 p7 = Pose(name="p7", pos=(3, 3, 0))
 p8 = Pose(name="p8", pos=(3, 3, 0))
+p9 = Pose(name="p9", pos=(4, 4, 0))
+p10 = Pose(name="p10", pos=(4, 4, 0))
 
 robot = Robot(name="robot1", at=p1)
-block_1 = Object(name="block1", at=p2)
-block_2 = Object(name="block2", at=p3)
-block_3 = Object(name="block3", at=p4)
+block_1 = Object(name="block1", at=p5)
+block_2 = Object(name="block2", at=p2)
+block_3 = Object(name="block3", at=p9)
+block_4 = Object(name="block4", at=p6, on=block_3)
 
 things_init = {
     Robot: [robot],
-    Pose: [p1, p2, p3, p4, p5, p6, p7, p8],
-    Object: [block_1, block_2, block_3],
+    Pose: [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10],
+    Object: [block_1, block_2, block_3, block_4],
 }
 
 init_state = State({})
@@ -28,7 +31,7 @@ for thing_list in things_init.values():
         init_state.update(thing.state)
 
 goal_state = State({
-    'block1_at': 'p6',
+    'block1_at': 'p3',
     'block2_at': 'p7',
     'block3_at': 'p8',
 })

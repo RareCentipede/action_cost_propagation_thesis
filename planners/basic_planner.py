@@ -1,3 +1,4 @@
+import time
 import numpy as np
 
 from eas.block_domain import Pose, Robot, Object
@@ -30,7 +31,6 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], domain: Domai
 
         action_params = parse_action_params(action_name, node, target)
         action_applicable = is_action_applicable(conds, action_params)
-
         if not action_applicable:
             action_values.append(-1)
             continue
@@ -58,16 +58,16 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], domain: Domai
 
     return action_values
 
-def apply_best_action(action_values: List, node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
-    valid_actions = [av for av in action_values if av[1] >=0]
+def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
+    valid_node_actions = {k: v for k, v in node_action_values.items() if v[1] >= 0}
+    valid_actions = [av for av in valid_node_actions.values()]
     new_state = State({})
     plan = []
 
     while valid_actions:
         best_node = np.argmax(np.array(valid_actions)[:, 1])
-        best_node_key = list(node_action_values.keys())[best_node]
-        # print(f"Node action values: {node_action_values}")
-        action_id = node_action_values[best_node_key][0]
+        best_node_key = list(valid_node_actions.keys())[best_node]
+        action_id = valid_node_actions[best_node_key][0]
         edge = current_nodes[best_node_key].edges[action_id]
 
         action_name, target = edge
@@ -77,7 +77,7 @@ def apply_best_action(action_values: List, node_action_values: Dict, current_nod
         action = cast(Tuple, action)
         _, conds, effects = action
 
-        action = f"{current_nodes[best_node].name} --[{action_name}]--> {target.name}"
+        action = f"{current_nodes[best_node_key].name} --[{action_name}]--> {target.name}"
         plan.append(action)
         print(action)
         new_state = apply_action(domain.current_state, conds, action_params, effects)
@@ -111,10 +111,10 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
 
             node_action_values[node_id] = [np.argmax(action_values).item(), max(action_values)]
 
-        action_values_list = list(node_action_values.values())
-        new_state, new_actions = apply_best_action(action_values_list, node_action_values, current_nodes, domain)
+        new_state, new_actions = apply_best_action(node_action_values, current_nodes, domain)
         actions.extend(new_actions)
 
+        time.sleep(0.1)
         if new_state:
             domain.update_state(new_state)
 
