@@ -26,7 +26,7 @@ block_3 = Object(name="block3", at=p4)
 
 things_init = {
     Robot: [robot],
-    Pose: [p1, p2, p3, p4, p5],
+    Pose: [p1, p2, p3, p4, p5, p6, p7, p8],
     Object: [block_1, block_2, block_3],
 }
 
@@ -47,19 +47,8 @@ block_domain.goal_state = goal_state
 block_domain.map_name_to_things()
 # block_domain.update_state(mock_goal_state)
 
-move_conditions = block_domain.actions['move'][1]
-move_effects = block_domain.actions['move'][2]
-
-move_conditions = List[SimpleCondition], move_conditions
-move_effects = List[SimpleCondition], move_effects
-
-move_params = {
-    'robot': robot,
-    'start_pose': robot.at,
-    'target_pose': p5
-}
-
 dtg = create_domain_transition_graph(block_domain)
+
 goal_nodes = {}
 for var, val in block_domain.goal_state.items():
     dtg_key = f"{var}_{val}"
@@ -68,13 +57,16 @@ for var, val in block_domain.goal_state.items():
     if goal_node:
         goal_nodes[dtg_key] = goal_node
 
+print(goal_nodes)
+time.sleep(100) # Empty?? :O
+
 while not block_domain.goal_reached:
     current_nodes = []
     for var, val in block_domain.current_state.items():
         dtg_key = f"{var}_{val}"
         current_node = dtg.get(dtg_key, None)
         # print(f"dtg_key: {var}_{val}, current_node: {current_node.name if current_node else None}")
-        if current_node:
+        if current_node and current_node not in goal_nodes.values():
             current_nodes.append(current_node)
 
     node_action_values = {}
@@ -108,27 +100,35 @@ while not block_domain.goal_reached:
                 continue
 
             if target in goal_nodes.values():
-                action_value += 1
+                action_value += 5
 
             goal_positions = [g_node.values[1] for g_node in goal_nodes.values()]
             robot = action_params.get('robot')
             robot = cast(Robot, robot)
 
             actions_in_target = [e[0] for e in target.edges]
-            if 'pick' in actions_in_target:
+            if action_name == 'move':
+                print(f'Move action to {target.name} evaluated.')
+                print(f'Target pos: {target.values[1].name}, goal positions: {goal_positions}')
+                if target.values[1] in goal_positions and robot.gripper_empty:
+                    action_value += 4
+            elif 'pick' in actions_in_target:
                 action_value += 2
             elif 'place' in actions_in_target:
                 action_value += 3
-            elif 'move' in actions_in_target and target.values[1] in goal_positions and not robot.gripper_empty:
-                action_value += 4
+            # elif 'move' in actions_in_target and target.values[1] in goal_positions and not robot.gripper_empty:
+            #     action_value += 4
 
             action_values.append(action_value)
 
-        node_action_values[node_id] = [np.argmax(action_values), max(action_values)]
+        node_action_values[node_id] = [np.argmax(action_values).item(), max(action_values)]
 
     # print(f"node_action_values: {node_action_values}")
-    while node_action_values:
-        best_node = np.argmax(np.array(list(node_action_values.values()))[:, 1])
+    action_values_list = list(node_action_values.values())
+    valid_actions = [av for av in action_values_list if av[1] >=0]
+
+    while valid_actions:
+        best_node = np.argmax(np.array(valid_actions)[:, 1])
         best_node_key = list(node_action_values.keys())[best_node]
         # print(f"Node action values: {node_action_values}")
         action_id = node_action_values[best_node_key][0]
@@ -147,7 +147,7 @@ while not block_domain.goal_reached:
         if len(block_domain.states) >= 2:
             if new_state == block_domain.states[-2]:
                 print("Reverted to previous state, choosing next best action...")
-                node_action_values.pop(best_node)
+                valid_actions.pop(best_node)
                 continue
             else:
                 break
