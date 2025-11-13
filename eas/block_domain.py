@@ -14,18 +14,24 @@ class NoneObj(Thing):
     name: str = "NoneObject"
 
 @dataclass(eq=False)
+class Ground(Thing):
+    name: str = "GND"
+
+@dataclass(eq=False)
 class Pose(Thing):
     pos: Tuple[float, float, float]
     orientation: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     clear: bool = True
     occupied_by: 'Object | NoneObj' = field(default_factory=NoneObj)
+    on: 'Pose | NonePose | Ground' = field(default_factory=NonePose)
+    below: 'Pose | NonePose' = field(default_factory=NonePose)
     variables = ("clear", "occupied_by")
 
 @dataclass(eq=False)
 class Object(Thing):
     at: Pose | NonePose
     at_top: bool = True
-    on: 'Object | NoneObj' = field(default_factory=NoneObj)
+    on: 'Object | NoneObj | Ground' = field(default_factory=NoneObj)
     below: 'Object | NoneObj' = field(default_factory=NoneObj)
     variables = ("at", "at_top", "on", "below")
 
@@ -105,7 +111,6 @@ def create_nodes(domain: Domain) -> Tuple[Dict[str, Node], Dict[str, Node]]:
         for block in domain.things.get(Object, []):
             node_name = f"{block.name}_at_{pose.name}"
             block_dtg[node_name] = Node(name=node_name, values=(robot, block, pose))
-
             none_node_name = f"{block.name}_at_NonePose"
             if block_dtg.get(none_node_name, None) is None:
                 block_dtg[none_node_name] = Node(name=none_node_name, values=(robot, block, NonePose()))

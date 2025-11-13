@@ -64,6 +64,9 @@ def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domai
     new_state = State({})
     plan = []
 
+    for node_id, action_values in node_action_values.items():
+        print(f"Node: {current_nodes[node_id].name}, Best Action ID: {action_values[0]}, Value: {action_values[1]}")
+
     while valid_actions:
         best_node = np.argmax(np.array(valid_actions)[:, 1])
         best_node_key = list(valid_node_actions.keys())[best_node]

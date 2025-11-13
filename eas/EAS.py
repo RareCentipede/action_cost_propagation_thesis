@@ -49,8 +49,7 @@ class Domain:
     name_things: Dict[str, Thing] = field(default_factory=dict)
 
     def map_name_to_things(self):
-        things_copy = self.things.copy()
-        for things in things_copy.values():
+        for things in self.things.values():
             if isinstance(things, list):
                 for thing in things:
                     self.name_things[thing.name] = thing
@@ -177,7 +176,3 @@ def parse_action_params(action_name: str, node: Node, target: Node) -> Dict[str,
             raise ValueError(f"Unknown action: {action_name}")
 
     return action_params
-
-# TODO: Plan tasks and timeline again
-# TODO: Think about experiments and expected results, types of graphs
-# TODO: What simulations are needed
