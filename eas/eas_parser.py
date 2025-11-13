@@ -4,8 +4,7 @@ from yaml import safe_load
 from typing import Dict, List, Tuple, cast
 
 from eas.EAS import Domain, State
-from eas.block_domain import Robot, Pose, Object, domain, create_goal_nodes, create_domain_transition_graph
-from planners.basic_planner import solve_dtg_basic
+from eas.block_domain import Robot, Pose, Object
 
 def parse_configs(domain: Domain, config_name: str, problem_config_path: str = "config/problem_configs/") -> Domain:
     init_config, goal_config = load_configs_to_dict(config_name, problem_config_path)
