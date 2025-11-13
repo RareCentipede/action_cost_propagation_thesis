@@ -1,48 +1,19 @@
 from eas.EAS import State
-from eas.block_domain import Robot, Pose, Object, create_goal_nodes, domain, create_domain_transition_graph
+from eas.block_domain import create_goal_nodes, domain, create_domain_transition_graph
+from eas.eas_parser import parse_configs
 from planners.basic_planner import solve_dtg_basic
 
-p1 = Pose(name="p1", pos=(0, 0, 0))
-p2 = Pose(name="p2", pos=(0, 0, 0))
-p3 = Pose(name="p3", pos=(1, 1, 0))
-p4 = Pose(name="p4", pos=(1, 1, 0))
-p5 = Pose(name="p5", pos=(2, 2, 0))
-p6 = Pose(name="p6", pos=(2, 2, 0))
-p7 = Pose(name="p7", pos=(3, 3, 0))
-p8 = Pose(name="p8", pos=(3, 3, 0))
-p9 = Pose(name="p9", pos=(4, 4, 0))
-p10 = Pose(name="p10", pos=(4, 4, 0))
+def main():
+    config_name = "stacked"
+    problem_config_path = "config/problem_configs/"
 
-robot = Robot(name="robot1", at=p1)
-block_1 = Object(name="block1", at=p5)
-block_2 = Object(name="block2", at=p2)
-block_3 = Object(name="block3", at=p9)
-block_4 = Object(name="block4", at=p6, on=block_3)
+    block_domain = parse_configs(domain, config_name, problem_config_path)
+    dtg = create_domain_transition_graph(block_domain)
+    goal_nodes = create_goal_nodes(block_domain, dtg)
 
-things_init = {
-    Robot: [robot],
-    Pose: [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10],
-    Object: [block_1, block_2, block_3, block_4],
-}
+    plan = solve_dtg_basic(goal_nodes, dtg, block_domain)
+    for step in plan:
+        print(step)
 
-init_state = State({})
-for thing_list in things_init.values():
-    for thing in thing_list:
-        init_state.update(thing.state)
-
-goal_state = State({
-    'block1_at': 'p3',
-    'block2_at': 'p7',
-    'block3_at': 'p8',
-})
-
-domain.things = things_init
-domain.states.append(init_state)
-domain.goal_state = goal_state
-domain.map_name_to_things()
-
-dtg = create_domain_transition_graph(domain)
-goal_nodes = create_goal_nodes(domain, dtg)
-plan = solve_dtg_basic(goal_nodes, dtg, domain)
-for step in plan:
-    print(step)
+if __name__ == "__main__":
+    main()
