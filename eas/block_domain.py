@@ -134,3 +134,14 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
 
     dtg = {**robot_dtg, **block_dtg}
     return dtg
+
+def create_goal_nodes(domain: Domain, dtg: Dict[str, Node]) -> Dict[str, Node]:
+    goal_nodes = {}
+    for var, val in domain.goal_state.items():
+        dtg_key = f"{var}_{val}"
+        goal_node = dtg.get(dtg_key, None)
+
+        if goal_node:
+            goal_nodes[dtg_key] = goal_node
+
+    return goal_nodes
