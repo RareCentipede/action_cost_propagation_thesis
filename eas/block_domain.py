@@ -79,6 +79,18 @@ domain = Domain(things={}, states=[], goal_state=State({}), actions={'move': (mo
                                                                      'place': (place_parameters, place_conditions, place_effects)})
 
 def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
+    robot_dtg, block_dtg = create_nodes(domain)
+
+    robot_nodes = list(robot_dtg.values())
+    block_nodes = list(block_dtg.values())
+
+    connect_robot_nodes(robot_nodes)
+    connect_block_nodes(block_nodes)
+
+    dtg = {**robot_dtg, **block_dtg}
+    return dtg
+
+def create_nodes(domain: Domain) -> Tuple[Dict[str, Node], Dict[str, Node]]:
     robot_dtg = {}
     block_dtg = {}
 
@@ -98,7 +110,9 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
             if block_dtg.get(none_node_name, None) is None:
                 block_dtg[none_node_name] = Node(name=none_node_name, values=(robot, block, NonePose()))
 
-    robot_nodes = list(robot_dtg.values())
+    return robot_dtg, block_dtg
+
+def connect_robot_nodes(robot_nodes: List[Node]) -> None:
     while robot_nodes:
         node = robot_nodes.pop(0)
 
@@ -108,7 +122,7 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
             node.edges.append(edge)
             other_node.edges.append(('move', node))
 
-    block_nodes = list(block_dtg.values())
+def connect_block_nodes(block_nodes: List[Node]) -> None:
     while block_nodes:
         node = block_nodes.pop(0)
         if len(node.values) == 3:
@@ -131,9 +145,6 @@ def create_domain_transition_graph(domain: Domain) -> Dict[str, Node]:
             elif isinstance(other_value, NonePose):
                 other_node.edges.append(('place', node))
                 node.edges.append(('pick', other_node))
-
-    dtg = {**robot_dtg, **block_dtg}
-    return dtg
 
 def create_goal_nodes(domain: Domain, dtg: Dict[str, Node]) -> Dict[str, Node]:
     goal_nodes = {}
