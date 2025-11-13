@@ -112,6 +112,8 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
             action_values = compute_action_values(node, goal_nodes, domain,
                                                   current_block_positions, goal_blocks, goal_positions)
 
+            # TODO: Make it able to choose more actions, because sometimes many actions have the same values, \
+                # but not all of them result in a good state
             node_action_values[node_id] = [np.argmax(action_values).item(), max(action_values)]
 
         new_state, new_actions = apply_best_action(node_action_values, current_nodes, domain)
