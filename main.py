@@ -1,5 +1,5 @@
 from eas.EAS import State
-from eas.block_domain import Robot, Pose, Object, domain, create_domain_transition_graph
+from eas.block_domain import Robot, Pose, Object, create_goal_nodes, domain, create_domain_transition_graph
 from planners.basic_planner import solve_dtg_basic
 
 p1 = Pose(name="p1", pos=(0, 0, 0))
@@ -42,15 +42,7 @@ domain.goal_state = goal_state
 domain.map_name_to_things()
 
 dtg = create_domain_transition_graph(domain)
-
-goal_nodes = {}
-for var, val in domain.goal_state.items():
-    dtg_key = f"{var}_{val}"
-    goal_node = dtg.get(dtg_key, None)
-
-    if goal_node:
-        goal_nodes[dtg_key] = goal_node
-
+goal_nodes = create_goal_nodes(domain, dtg)
 plan = solve_dtg_basic(goal_nodes, dtg, domain)
 for step in plan:
     print(step)
