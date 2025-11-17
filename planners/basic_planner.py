@@ -2,22 +2,14 @@ import time
 import numpy as np
 
 from eas.block_domain import Pose, Robot, Object
-from eas.EAS import apply_action, parse_action_params, is_action_applicable
+from eas.EAS import apply_action, parse_action_params, is_action_applicable, query_current_nodes, query_nodes
 from eas.EAS import State, Node, Domain
 from typing import Tuple, Dict, cast, List
 
-def query_current_nodes(dtg: Dict[str, Node], current_state: State, goal_nodes: Dict[str, Node]) -> List[Node]:
-    current_nodes = []
-    for var, val in current_state.items():
-        dtg_key = f"{var}_{val}"
-        current_node = dtg.get(dtg_key, None)
-        if current_node and current_node not in goal_nodes.values():
-            current_nodes.append(current_node)
-    return current_nodes
-
-def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict[str, Tuple],
+def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], node: Node, goal_nodes: Dict[str, Node], actions: Dict[str, Tuple],
                           current_block_positions: List[Object], goal_blocks: List[Object], goal_positions: List[Pose]) -> List:
     action_values = []
+    nodes = []
     for edge in node.edges:
         action_name, target = edge
         action_value = 0
@@ -27,19 +19,22 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict
         if not action:
             continue
 
-        _, conds, _ = action
+        _, conds, effects = action
 
         action_params = parse_action_params(action_name, node, target)
         action_applicable = is_action_applicable(conds, action_params)
+
+        robot = action_params.get('robot')
+        robot = cast(Robot, robot)
+
         if not action_applicable:
             action_values.append(-1)
             continue
 
         if target in goal_nodes.values():
             action_value += 5
-
-        robot = action_params.get('robot')
-        robot = cast(Robot, robot)
+            action_values.append(action_value)
+            continue
 
         # Need to look ahead to see if the resulting state enables feasible actions. Maybe consider MCTS
         if action_name == 'move':
@@ -55,8 +50,44 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict
             if obj in goal_blocks and robot.gripper_empty:
                 action_value += 3
 
-        action_values.append(action_value)
+        tent_state = apply_action(state, conds, action_params, effects)
+        domain.update_state(tent_state)
+        nodes = query_nodes(dtg, tent_state)
 
+        # print(f"\nTentative nodes: {[n.name for n in nodes]} after action {action_name} on node {node.name} to {target.name}")
+
+        for t_node in nodes:
+            for edge in t_node.edges:
+                tent_action_name, target = edge
+                action = actions.get(tent_action_name)
+
+                if not action:
+                    continue
+
+                _, conds, effects = action
+
+                action_params = parse_action_params(tent_action_name, t_node, target)
+                verbose = False
+                if t_node.name == 'block5_at_p5' and tent_action_name == 'pick':
+                    verbose = True
+
+                action_applicable = is_action_applicable(conds, action_params, verbose=verbose)
+                # print(f"From tentative node {t_node.name}, checking action {tent_action_name} to {target.name}, robot at: {tent_state.get(f'{robot.name}_at')}")
+
+                if not action_applicable:
+                    # print(f"From node {node.name}'s tentative node {t_node.name}, cannot do action {tent_action_name} to {target.name}")
+                    continue
+
+                if target in goal_nodes.values():
+                    action_value += 5
+
+                if tent_action_name == 'pick':
+                    action_value += 1
+
+        action_values.append(action_value)
+        domain.states.pop(-1)
+        domain.update_state(state)
+        domain.states.pop(-1)
     return action_values
 
 def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
@@ -111,7 +142,8 @@ def apply_best_action_selection(node_action_values: Dict, current_nodes: List[No
         valid_node_actions[k] = v
 
     for node_id, action_values in valid_node_actions.items():
-        print(f"Node: {current_nodes[node_id].name}, Action Values: {action_values}")
+        action_value_dict = {f"{a[0]}->{a[1].name}": v for a, v in zip(current_nodes[node_id].edges, action_values)}
+        print(f"Node: {current_nodes[node_id].name}, Action Values: {action_value_dict}")
 
     while valid_node_actions:
         best_action_value_per_node = np.array([max(v) for v in valid_node_actions.values()])
@@ -162,7 +194,7 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
         # print(f"Current nodes: {[node.name for node in current_nodes]}")
 
         for node_id, node in enumerate(current_nodes):
-            action_values = compute_action_values(node, goal_nodes, actions_in_domain,
+            action_values = compute_action_values(domain, current_state, dtg, node, goal_nodes, actions_in_domain,
                                                   current_block_positions, goal_blocks, goal_positions)
 
             # TODO: Make it able to choose more actions, because sometimes many actions have the same values, \

@@ -50,9 +50,8 @@ class Domain:
 
     def map_name_to_things(self):
         for things in self.things.values():
-            if isinstance(things, list):
-                for thing in things:
-                    self.name_things[thing.name] = thing
+            for thing in things:
+                self.name_things[thing.name] = thing
 
     @property
     def current_state(self) -> State:
@@ -90,7 +89,7 @@ class Node:
         edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
         return node_name + values + edges
 
-def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing]) -> bool:
+def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing], verbose: bool = False) -> bool:
     for cond in conditions:
         if type(cond) is tuple:
             cond = cast(SimpleCondition, cond)
@@ -108,7 +107,9 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
         # print(param, variable_name)
         current_val = getattr(param, variable_name, None)
         if current_val != target:
-            param_name = param.name if param else None
+            if verbose:
+                print(f"Condition failed: {parent_name}_{variable_name}, current: {current_val}, target: {target}")
+            # param_name = param.name if param else None
             # print(f"Condition failed: {param_name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 
@@ -144,6 +145,7 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
             target = target_name.name
         else:
             target = target_name
+
         new_state.update({state_key: target})
 
     return new_state
@@ -176,3 +178,21 @@ def parse_action_params(action_name: str, node: Node, target: Node) -> Dict[str,
             raise ValueError(f"Unknown action: {action_name}")
 
     return action_params
+
+def query_nodes(dtg: Dict[str, Node], state: State) -> List[Node]:
+    nodes = []
+    for var, val in state.items():
+        dtg_key = f"{var}_{val}"
+        node = dtg.get(dtg_key, None)
+        if node:
+            nodes.append(node)
+    return nodes
+
+def query_current_nodes(dtg: Dict[str, Node], current_state: State, goal_nodes: Dict[str, Node]) -> List[Node]:
+    current_nodes = []
+    for var, val in current_state.items():
+        dtg_key = f"{var}_{val}"
+        current_node = dtg.get(dtg_key, None)
+        if current_node and current_node not in goal_nodes.values():
+            current_nodes.append(current_node)
+    return current_nodes
