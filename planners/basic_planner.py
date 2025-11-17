@@ -41,6 +41,7 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict
         robot = action_params.get('robot')
         robot = cast(Robot, robot)
 
+        # Need to look ahead to see if the resulting state enables feasible actions. Maybe consider MCTS
         if action_name == 'move':
             if target.values[1] in goal_positions and not robot.gripper_empty and target.values[1].occupied_by == "NoneObject":
                 action_value += 4
