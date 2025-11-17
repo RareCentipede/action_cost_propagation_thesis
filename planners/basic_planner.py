@@ -6,23 +6,23 @@ from eas.EAS import apply_action, parse_action_params, is_action_applicable
 from eas.EAS import State, Node, Domain
 from typing import Tuple, Dict, cast, List
 
-def query_current_nodes(dtg: Dict[str, Node], domain: Domain, goal_nodes: Dict[str, Node]) -> List[Node]:
+def query_current_nodes(dtg: Dict[str, Node], current_state: State, goal_nodes: Dict[str, Node]) -> List[Node]:
     current_nodes = []
-    for var, val in domain.current_state.items():
+    for var, val in current_state.items():
         dtg_key = f"{var}_{val}"
         current_node = dtg.get(dtg_key, None)
         if current_node and current_node not in goal_nodes.values():
             current_nodes.append(current_node)
     return current_nodes
 
-def compute_action_values(node: Node, goal_nodes: Dict[str, Node], domain: Domain,
+def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict[str, Tuple],
                           current_block_positions: List[Object], goal_blocks: List[Object], goal_positions: List[Pose]) -> List:
     action_values = []
     for edge in node.edges:
         action_name, target = edge
         action_value = 0
 
-        action = domain.actions.get(action_name)
+        action = actions.get(action_name)
 
         if not action:
             continue
@@ -99,22 +99,24 @@ def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domai
 def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: Domain) -> List[str]:
     goal_blocks = [g_node.values[1] for g_node in goal_nodes.values()]
     goal_positions = [g_node.values[-1] for g_node in goal_nodes.values()]
+    actions_in_domain = domain.actions
     actions = []
 
     while not domain.goal_reached:
-        current_nodes = query_current_nodes(dtg, domain, goal_nodes)
+        current_state = domain.current_state
+        current_nodes = query_current_nodes(dtg, current_state, goal_nodes)
         current_block_positions = [node.values[-1] for node in current_nodes if type(node.values[1]) == Object]
 
         node_action_values = {}
         # print(f"Current nodes: {[node.name for node in current_nodes]}")
 
         for node_id, node in enumerate(current_nodes):
-            action_values = compute_action_values(node, goal_nodes, domain,
+            action_values = compute_action_values(node, goal_nodes, actions_in_domain,
                                                   current_block_positions, goal_blocks, goal_positions)
 
             # TODO: Make it able to choose more actions, because sometimes many actions have the same values, \
                 # but not all of them result in a good state
-            node_action_values[node_id] = [np.argmax(action_values).item(), max(action_values)]
+            node_action_values[node_id] = action_values
 
         new_state, new_actions = apply_best_action(node_action_values, current_nodes, domain)
         actions.extend(new_actions)
