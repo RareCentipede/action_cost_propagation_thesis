@@ -59,18 +59,27 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict
     return action_values
 
 def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
-    valid_node_actions = {k: v for k, v in node_action_values.items() if v[1] >= 0}
-    valid_actions = [av for av in valid_node_actions.values()]
-    new_state = State({})
     plan = []
+    valid_node_actions = {}
+    new_state = State({})
+    current_state = domain.current_state
 
-    for node_id, action_values in node_action_values.items():
-        print(f"Node: {current_nodes[node_id].name}, Best Action ID: {action_values[0]}, Value: {action_values[1]}")
+    for k, v in node_action_values.items():
+        valid_vals = [i for i in v if i >= 0]
+        if not valid_vals:
+            continue
 
-    while valid_actions:
-        best_node = np.argmax(np.array(valid_actions)[:, 1])
+        valid_node_actions[k] = valid_vals
+
+    for node_id, action_values in valid_node_actions.items():
+        print(f"Node: {current_nodes[node_id].name}, Action Values: {action_values}")
+
+    while valid_node_actions:
+        best_action_value_per_node = np.array([max(v) for v in valid_node_actions.values()])
+        best_node = np.argmax(best_action_value_per_node)
         best_node_key = list(valid_node_actions.keys())[best_node]
-        action_id = valid_node_actions[best_node_key][0]
+
+        action_id = np.argmax(valid_node_actions[best_node_key])
         edge = current_nodes[best_node_key].edges[action_id]
 
         action_name, target = edge
@@ -83,11 +92,16 @@ def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domai
         action = f"{current_nodes[best_node_key].name} --[{action_name}]--> {target.name}"
         plan.append(action)
         print(action)
-        new_state = apply_action(domain.current_state, conds, action_params, effects)
+        new_state = apply_action(current_state, conds, action_params, effects)
         if len(domain.states) >= 2:
             if new_state == domain.states[-2]:
                 print("Reverted to previous state, choosing next best action...\n")
-                valid_actions.pop(best_node)
+                dropped_action = valid_node_actions[best_node_key].pop(action_id)
+                print(f"Dropped action value: {dropped_action} from node {current_nodes[best_node_key].name}")
+                if not valid_node_actions[best_node_key]:
+                    valid_node_actions.pop(best_node_key)
+                    print(f"Removed node {current_nodes[best_node_key].name} from valid actions due to no remaining actions.")
+
                 continue
             else:
                 break
