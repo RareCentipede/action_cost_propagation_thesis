@@ -11,7 +11,7 @@ def parse_configs(domain: Domain, config_name: str, problem_config_path: str = "
     init_config, goal_config = load_configs_to_dict(config_name, problem_config_path)
     define_init_objects_and_poses(init_config, domain)
     define_goal_objects_and_poses(goal_config, domain)
-    build_physical_relations(domain)
+    # build_physical_relations(domain)
     initialize_states_and_domain(domain)
 
     return domain
@@ -105,7 +105,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
         if i in visited_positions:
             continue
 
-        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=0.05)
+        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=0.05, p=2)
         visited_positions.extend(pos_idx_in_stack)
 
         poses_in_stack = np.array(poses)[pos_idx_in_stack]

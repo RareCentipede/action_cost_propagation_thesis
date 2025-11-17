@@ -60,17 +60,55 @@ def compute_action_values(node: Node, goal_nodes: Dict[str, Node], actions: Dict
     return action_values
 
 def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
+    valid_node_actions = {k: v for k, v in node_action_values.items() if v[1] >= 0}
+    valid_actions = [av for av in valid_node_actions.values()]
+    new_state = State({})
+    plan = []
+
+    for node_id, action_values in node_action_values.items():
+        print(f"Node: {current_nodes[node_id].name}, Best Action ID: {action_values[0]}, Value: {action_values[1]}")
+
+    while valid_actions:
+        best_node = np.argmax(np.array(valid_actions)[:, 1])
+        best_node_key = list(valid_node_actions.keys())[best_node]
+        action_id = valid_node_actions[best_node_key][0]
+        edge = current_nodes[best_node_key].edges[action_id]
+
+        action_name, target = edge
+        action_params = parse_action_params(action_name, current_nodes[best_node_key], target)
+
+        action = domain.actions.get(action_name)
+        action = cast(Tuple, action)
+        _, conds, effects = action
+
+        action = f"{current_nodes[best_node_key].name} --[{action_name}]--> {target.name}"
+        plan.append(action)
+        print(action)
+        new_state = apply_action(domain.current_state, conds, action_params, effects)
+        if len(domain.states) >= 2:
+            if new_state == domain.states[-2]:
+                print("Reverted to previous state, choosing next best action...\n")
+                valid_actions.pop(best_node)
+                continue
+            else:
+                break
+        else:
+            break
+
+    return new_state, plan
+
+def apply_best_action_selection(node_action_values: Dict, current_nodes: List[Node], domain: Domain) -> Tuple[State, List[str]]:
     plan = []
     valid_node_actions = {}
     new_state = State({})
     current_state = domain.current_state
 
     for k, v in node_action_values.items():
-        valid_vals = [i for i in v if i >= 0]
-        if not valid_vals:
+        invalid_actions = np.where(v < 0)[0]
+        if invalid_actions.size == v.size:
             continue
 
-        valid_node_actions[k] = valid_vals
+        valid_node_actions[k] = v
 
     for node_id, action_values in valid_node_actions.items():
         print(f"Node: {current_nodes[node_id].name}, Action Values: {action_values}")
@@ -97,11 +135,9 @@ def apply_best_action(node_action_values: Dict, current_nodes: List[Node], domai
         if len(domain.states) >= 2:
             if new_state == domain.states[-2]:
                 print("Reverted to previous state, choosing next best action...\n")
-                dropped_action = valid_node_actions[best_node_key].pop(action_id)
-                print(f"Dropped action value: {dropped_action} from node {current_nodes[best_node_key].name}")
-                if not valid_node_actions[best_node_key]:
+                valid_node_actions[best_node_key] = np.delete(valid_node_actions[best_node_key], action_id)
+                if not valid_node_actions[best_node_key].tolist():
                     valid_node_actions.pop(best_node_key)
-                    print(f"Removed node {current_nodes[best_node_key].name} from valid actions due to no remaining actions.")
 
                 continue
             else:
@@ -131,9 +167,11 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
 
             # TODO: Make it able to choose more actions, because sometimes many actions have the same values, \
                 # but not all of them result in a good state
-            node_action_values[node_id] = action_values
+            node_action_values[node_id] = np.array(action_values)
+            # node_action_values[node_id] = (np.argmax(np.array(action_values)), max(action_values))
 
-        new_state, new_actions = apply_best_action(node_action_values, current_nodes, domain)
+        # new_state, new_actions = apply_best_action(node_action_values, current_nodes, domain)
+        new_state, new_actions = apply_best_action_selection(node_action_values, current_nodes, domain)
         actions.extend(new_actions)
 
         time.sleep(0.1)
