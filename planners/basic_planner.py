@@ -10,6 +10,8 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
                           current_block_positions: List[Object], goal_blocks: List[Object], goal_positions: List[Pose]) -> List:
     action_values = []
     nodes = []
+    verbose = False
+
     for edge in node.edges:
         action_name, target = edge
         action_value = 0
@@ -67,10 +69,6 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
                 _, conds, effects = action
 
                 action_params = parse_action_params(tent_action_name, t_node, target)
-                verbose = False
-                if t_node.name == 'block5_at_p5' and tent_action_name == 'pick':
-                    verbose = True
-
                 action_applicable = is_action_applicable(conds, action_params, verbose=verbose)
                 # print(f"From tentative node {t_node.name}, checking action {tent_action_name} to {target.name}, robot at: {tent_state.get(f'{robot.name}_at')}")
 
@@ -141,9 +139,9 @@ def apply_best_action_selection(node_action_values: Dict, current_nodes: List[No
 
         valid_node_actions[k] = v
 
-    for node_id, action_values in valid_node_actions.items():
-        action_value_dict = {f"{a[0]}->{a[1].name}": v for a, v in zip(current_nodes[node_id].edges, action_values)}
-        print(f"Node: {current_nodes[node_id].name}, Action Values: {action_value_dict}")
+    # for node_id, action_values in valid_node_actions.items():
+        # action_value_dict = {f"{a[0]}->{a[1].name}": v for a, v in zip(current_nodes[node_id].edges, action_values)}
+        # print(f"Node: {current_nodes[node_id].name}, Action Values: {action_value_dict}")
 
     while valid_node_actions:
         best_action_value_per_node = np.array([max(v) for v in valid_node_actions.values()])
@@ -197,8 +195,6 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
             action_values = compute_action_values(domain, current_state, dtg, node, goal_nodes, actions_in_domain,
                                                   current_block_positions, goal_blocks, goal_positions)
 
-            # TODO: Make it able to choose more actions, because sometimes many actions have the same values, \
-                # but not all of them result in a good state
             node_action_values[node_id] = np.array(action_values)
             # node_action_values[node_id] = (np.argmax(np.array(action_values)), max(action_values))
 
