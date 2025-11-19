@@ -112,6 +112,9 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
         poses_in_stack = sorted(poses_in_stack, key=lambda p: (p.pos[2]))
 
         for j, pose in enumerate(poses_in_stack):
+            if j == 0:
+                pose.on = Ground()
+
             if j < len(poses_in_stack) - 1:
                 above_pose = poses_in_stack[j+1]
                 pose.below = above_pose
