@@ -127,7 +127,20 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
         if type(effect) is tuple:
             effect = cast(SimpleCondition, effect)
             parent_name, variable_name, target_name = effect
-            parent = parameters.get(parent_name)
+
+            # In case of nested attributes like 'target_pose.occupied_by'
+            if '.' not in parent_name:
+                parent = parameters.get(parent_name)
+            else:
+                attrs = parent_name.split('.')
+                parent = parameters.get(attrs[0])
+
+                for attr in attrs[1:]:
+                    parent = getattr(parent, attr, None)
+
+            if not parent or (type(parent) is str) or (parent.name == 'GND') or (parent.name == 'NonePose') or (parent.name == 'NoneObject'):
+                continue
+
         else:
             effect = cast(ComputedCondition, effect)
             raise ValueError("ComputedCondition effects are not supported in apply_action yet, what did you do???")
