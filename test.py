@@ -7,5 +7,6 @@ b1 = Object("b1", p1, False, Ground())
 b2 = Object("b2", p2, True, b1)
 b1.below = b2
 
-setattr(b2, 'on.at_top', True)
-print(b1.at_top)
+p1.on = p2
+p2.occupied_by = b2
+print(getattr(p1, 'supported'))

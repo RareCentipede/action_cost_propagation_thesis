@@ -23,8 +23,14 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
 
         _, conds, effects = action
 
+        # if action_name == 'place' and node.name == 'block5_at_None':
+        #     verbose = True
+        #     # print(f'Main loop')
+        # else:
+        #     verbose = False
+
         action_params = parse_action_params(action_name, node, target)
-        action_applicable = is_action_applicable(conds, action_params)
+        action_applicable = is_action_applicable(conds, action_params, verbose=verbose)
 
         robot = action_params.get('robot')
         robot = cast(Robot, robot)
@@ -40,7 +46,7 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
 
         # Need to look ahead to see if the resulting state enables feasible actions. Maybe consider MCTS
         if action_name == 'move':
-            if target.values[1] in goal_positions and not robot.gripper_empty and target.values[1].occupied_by == "NoneObject":
+            if target.values[1] in goal_positions and not robot.gripper_empty and target.values[1].occupied_by is None:
                 action_value += 4
             elif target.values[1] in current_block_positions and robot.gripper_empty and target.values[1] not in goal_positions:
                 action_value += 2
@@ -55,7 +61,6 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
         tent_state = apply_action(state, conds, action_params, effects)
         domain.update_state(tent_state)
         nodes = query_nodes(dtg, tent_state)
-
         # print(f"\nTentative nodes: {[n.name for n in nodes]} after action {action_name} on node {node.name} to {target.name}")
 
         for t_node in nodes:
@@ -69,6 +74,13 @@ def compute_action_values(domain: Domain, state: State, dtg: Dict[str, Node], no
                 _, conds, effects = action
 
                 action_params = parse_action_params(tent_action_name, t_node, target)
+                # if action_name == 'place':
+                #     verbose = True
+                #     print('inner loop')
+                #     # print(f"\nFrom tentative node {t_node.name}, checking action {tent_action_name} to {target.name}, robot at: {tent_state.get(f'{robot.name}_at')}")
+                # else:
+                #     verbose = False
+
                 action_applicable = is_action_applicable(conds, action_params, verbose=verbose)
                 # print(f"From tentative node {t_node.name}, checking action {tent_action_name} to {target.name}, robot at: {tent_state.get(f'{robot.name}_at')}")
 
@@ -133,6 +145,8 @@ def apply_best_action_selection(node_action_values: Dict, current_nodes: List[No
     current_state = domain.current_state
 
     for k, v in node_action_values.items():
+        # action_value_dict = {f"{a[0]}->{a[1].name}": v for a, v in zip(current_nodes[k].edges, v)}
+        # print(f"Node: {current_nodes[k].name}, Action Values: {action_value_dict}")
         invalid_actions = np.where(v < 0)[0]
         if invalid_actions.size == v.size:
             continue
@@ -205,6 +219,7 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
         time.sleep(0.1)
         if new_state:
             domain.update_state(new_state)
+            # print(new_state)
 
     print("Goal reached!")
     return actions

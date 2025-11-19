@@ -6,14 +6,6 @@ from typing import Tuple, List, Dict, cast
 from eas.EAS import Thing, State, SimpleCondition, Domain, Node, Condition
 
 @dataclass(eq=False)
-class NonePose(Thing):
-    name: str = "NonePose"
-
-@dataclass(eq=False)
-class NoneObj(Thing):
-    name: str = "NoneObject"
-
-@dataclass(eq=False)
 class Ground(Thing):
     name: str = "GND"
 
@@ -22,23 +14,41 @@ class Pose(Thing):
     pos: Tuple[float, float, float]
     orientation: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     clear: bool = True
-    occupied_by: 'Object | NoneObj' = field(default_factory=NoneObj)
-    on: 'Pose | NonePose | Ground' = field(default_factory=NonePose)
-    below: 'Pose | NonePose' = field(default_factory=NonePose)
-    variables = ("clear", "occupied_by", "on", "below")
+    occupied_by: 'Object | None' = None
+    on: 'Pose | Ground' = Ground()
+    below: 'Pose | None' = None
+    variables = ("clear", "occupied_by", "on", "below", "supported")
+    _supported: bool = False
+
+    @property
+    def supported(self) -> bool:
+        if self.on == 'GND':
+            return True
+
+        pose_below = cast(Pose, self.on) # Poses are never on a NonePose. Either ground or another valid pose.
+        below_obj = pose_below.occupied_by
+
+        if below_obj is not None:
+            return True
+
+        return False
+
+    @supported.setter
+    def supported(self, value: bool) -> None:
+        self._supported = self.supported
 
 @dataclass(eq=False)
 class Object(Thing):
-    at: Pose | NonePose
+    at: Pose | None
     at_top: bool = True
-    on: 'Object | NoneObj | Ground' = field(default_factory=NoneObj)
-    below: 'Object | NoneObj' = field(default_factory=NoneObj)
+    on: 'Object | None | Ground' = None
+    below: 'Object | None' = None
     variables = ("at", "at_top", "on", "below")
 
 @dataclass(eq=False)
 class Robot(Thing):
     at: Pose
-    holding: 'Object | NoneObj' = field(default_factory=NoneObj)
+    holding: 'Object | None' = None
     gripper_empty: bool = True
     variables = ("at", "holding", "gripper_empty")
 
@@ -57,20 +67,20 @@ pick_conditions = [SimpleCondition(('robot', 'at', 'object_pose')),
                    SimpleCondition(('object', 'at_top', True))]
 pick_effects = [SimpleCondition(('robot', 'holding', 'object')),
                 SimpleCondition(('robot', 'gripper_empty', False)),
-                SimpleCondition(('object', 'at', NonePose())),
-                SimpleCondition(('object_pose', 'occupied_by', NoneObj())),
+                SimpleCondition(('object', 'at', None)),
+                SimpleCondition(('object_pose', 'occupied_by', None)),
                 SimpleCondition(('object_pose', 'clear', True)),
                 SimpleCondition(('object.on', 'at_top', True)),
-                SimpleCondition(('object.on', 'below', NoneObj())),
-                SimpleCondition(('object', 'on', NoneObj()))]
-
+                SimpleCondition(('object.on', 'below', None)),
+                SimpleCondition(('object', 'on', None)),]
 place_parameters = {'robot': Robot,
                     'object': Object,
                     'target_pose': Pose}
 place_conditions = [SimpleCondition(('robot', 'at', 'target_pose')),
                     SimpleCondition(('robot', 'holding', 'object')),
-                    SimpleCondition(('target_pose', 'clear', True))]
-place_effects = [SimpleCondition(('robot', 'holding', NoneObj())),
+                    SimpleCondition(('target_pose', 'clear', True)),
+                    SimpleCondition(('target_pose', 'supported', True))]
+place_effects = [SimpleCondition(('robot', 'holding', None)),
                  SimpleCondition(('robot', 'gripper_empty', True)),
                  SimpleCondition(('object', 'at', 'target_pose')),
                  SimpleCondition(('object', 'on', 'target_pose.occupied_by')),
@@ -117,9 +127,9 @@ def create_nodes(domain: Domain) -> Tuple[Dict[str, Node], Dict[str, Node]]:
         for block in domain.things.get(Object, []):
             node_name = f"{block.name}_at_{pose.name}"
             block_dtg[node_name] = Node(name=node_name, values=(robot, block, pose))
-            none_node_name = f"{block.name}_at_NonePose"
+            none_node_name = f"{block.name}_at_None"
             if block_dtg.get(none_node_name, None) is None:
-                block_dtg[none_node_name] = Node(name=none_node_name, values=(robot, block, NonePose()))
+                block_dtg[none_node_name] = Node(name=none_node_name, values=(robot, block, None))
 
     return robot_dtg, block_dtg
 
@@ -150,10 +160,10 @@ def connect_block_nodes(block_nodes: List[Node]) -> None:
             if thing.name != other_thing.name:
                 continue
 
-            if isinstance(value, NonePose):
+            if value is None:
                 node.edges.append(('place', other_node))
                 other_node.edges.append(('pick', node))
-            elif isinstance(other_value, NonePose):
+            elif other_value is None:
                 other_node.edges.append(('place', node))
                 node.edges.append(('pick', other_node))
 
