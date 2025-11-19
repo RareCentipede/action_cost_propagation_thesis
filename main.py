@@ -4,7 +4,7 @@ from eas.eas_parser import parse_configs, build_physical_relations
 from planners.basic_planner import solve_dtg_basic
 
 def main():
-    config_name = "stacked"
+    config_name = "stack_2_stack"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
