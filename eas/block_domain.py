@@ -25,7 +25,7 @@ class Pose(Thing):
     occupied_by: 'Object | NoneObj' = field(default_factory=NoneObj)
     on: 'Pose | NonePose | Ground' = field(default_factory=NonePose)
     below: 'Pose | NonePose' = field(default_factory=NonePose)
-    variables = ("clear", "occupied_by")
+    variables = ("clear", "occupied_by", "on", "below")
 
 @dataclass(eq=False)
 class Object(Thing):
@@ -59,7 +59,10 @@ pick_effects = [SimpleCondition(('robot', 'holding', 'object')),
                 SimpleCondition(('robot', 'gripper_empty', False)),
                 SimpleCondition(('object', 'at', NonePose())),
                 SimpleCondition(('object_pose', 'occupied_by', NoneObj())),
-                SimpleCondition(('object_pose', 'clear', True))]
+                SimpleCondition(('object_pose', 'clear', True)),
+                SimpleCondition(('object.on', 'at_top', True)),
+                SimpleCondition(('object.on', 'below', NoneObj())),
+                SimpleCondition(('object', 'on', NoneObj()))]
 
 place_parameters = {'robot': Robot,
                     'object': Object,
@@ -70,8 +73,11 @@ place_conditions = [SimpleCondition(('robot', 'at', 'target_pose')),
 place_effects = [SimpleCondition(('robot', 'holding', NoneObj())),
                  SimpleCondition(('robot', 'gripper_empty', True)),
                  SimpleCondition(('object', 'at', 'target_pose')),
+                 SimpleCondition(('object', 'on', 'target_pose.occupied_by')),
                  SimpleCondition(('target_pose', 'occupied_by', 'object')),
-                 SimpleCondition(('target_pose', 'clear', False))]
+                 SimpleCondition(('target_pose', 'clear', False)),
+                 SimpleCondition(('target_pose.on.occupied_by', 'at_top', False)),
+                 SimpleCondition(('target_pose.on.occupied_by', 'below', 'object'))]
 
 move_conditions = cast(List[Condition], move_conditions)
 move_effects = cast(List[Condition], move_effects)
