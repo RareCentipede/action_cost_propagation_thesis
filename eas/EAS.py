@@ -49,11 +49,9 @@ class Domain:
     name_things: Dict[str, Thing] = field(default_factory=dict)
 
     def map_name_to_things(self):
-        things_copy = self.things.copy()
-        for things in things_copy.values():
-            if isinstance(things, list):
-                for thing in things:
-                    self.name_things[thing.name] = thing
+        for things in self.things.values():
+            for thing in things:
+                self.name_things[thing.name] = thing
 
     @property
     def current_state(self) -> State:
@@ -77,6 +75,8 @@ class Domain:
             value = self.name_things.get(value_name, value_name)
 
             if thing and hasattr(thing, variable_name):
+                if variable_name == 'supported':
+                    continue
                 setattr(thing, variable_name, value)
 
 @dataclass
@@ -91,7 +91,7 @@ class Node:
         edges = f"edges: {[(edge[0], edge[1].name if hasattr(edge[1], 'name') else edge[1]) for edge in self.edges]}"
         return node_name + values + edges
 
-def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing]) -> bool:
+def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing], verbose: bool = False) -> bool:
     for cond in conditions:
         if type(cond) is tuple:
             cond = cast(SimpleCondition, cond)
@@ -106,11 +106,13 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
             cond = cast(ComputedCondition, cond)
             raise ValueError("ComputedCondition conditions are not supported in is_action_applicable yet, what did you do???")
 
-        # print(param, variable_name)
+        if not param:
+            raise ValueError(f"Parameter {parent_name} not found in parameters")
+
         current_val = getattr(param, variable_name, None)
         if current_val != target:
-            param_name = param.name if param else None
-            # print(f"Condition failed: {param_name}_{variable_name}, current: {current_val}, target: {target}")
+            if verbose and variable_name == 'supported':
+                print(f"\nCondition failed: {param.name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 
     return True
@@ -127,7 +129,20 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
         if type(effect) is tuple:
             effect = cast(SimpleCondition, effect)
             parent_name, variable_name, target_name = effect
-            parent = parameters.get(parent_name)
+
+            # In case of nested attributes like 'target_pose.occupied_by'
+            if '.' not in parent_name:
+                parent = parameters.get(parent_name)
+            else:
+                attrs = parent_name.split('.')
+                parent = parameters.get(attrs[0])
+
+                for attr in attrs[1:]:
+                    parent = getattr(parent, attr, None)
+
+            if not parent or (parent.name == 'GND'):
+                continue
+
         else:
             effect = cast(ComputedCondition, effect)
             raise ValueError("ComputedCondition effects are not supported in apply_action yet, what did you do???")
@@ -136,15 +151,20 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
             raise ValueError(f"Parent {parent_name} not found in parameters")
 
         state_key = f"{parent.name}_{variable_name}"
-        target = parameters.get(target_name)
 
         if type(target_name) is str:
-            target = parameters.get(target_name)
-            target = target.name if target else None
-        elif hasattr(target_name, 'name'):
-            target = target_name.name
+            if '.' not in target_name:
+                target = parameters.get(target_name)
+                target = target.name if target else None
+            else:
+                attrs = target_name.split('.')
+                target = parameters.get(attrs[0])
+
+                for attr in attrs[1:]:
+                    target = getattr(target, attr, None)
         else:
             target = target_name
+
         new_state.update({state_key: target})
 
     return new_state
@@ -178,6 +198,20 @@ def parse_action_params(action_name: str, node: Node, target: Node) -> Dict[str,
 
     return action_params
 
-# TODO: Plan tasks and timeline again
-# TODO: Think about experiments and expected results, types of graphs
-# TODO: What simulations are needed
+def query_nodes(dtg: Dict[str, Node], state: State) -> List[Node]:
+    nodes = []
+    for var, val in state.items():
+        dtg_key = f"{var}_{val}"
+        node = dtg.get(dtg_key, None)
+        if node:
+            nodes.append(node)
+    return nodes
+
+def query_current_nodes(dtg: Dict[str, Node], current_state: State, goal_nodes: Dict[str, Node]) -> List[Node]:
+    current_nodes = []
+    for var, val in current_state.items():
+        dtg_key = f"{var}_{val}"
+        current_node = dtg.get(dtg_key, None)
+        if current_node and current_node not in goal_nodes.values():
+            current_nodes.append(current_node)
+    return current_nodes
