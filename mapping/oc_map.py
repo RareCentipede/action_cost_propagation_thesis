@@ -1,9 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import patches
 from typing import List, Tuple, Dict, cast
+from scipy.spatial import KDTree
+
 from eas.EAS import Domain
 from eas.block_domain import Pose, Object, Robot
-from matplotlib import patches
 
 class OccupancyGridMap:
     def __init__(self, domain: Domain, grid_res: float = 0.1, col_margin: float = 1.0, grid_limits: Tuple[Tuple[float, float], Tuple[float, float]] | None = None) -> None:
@@ -13,105 +15,84 @@ class OccupancyGridMap:
         self.grid_limits = grid_limits
         self.grid_size = None
 
+        self.grid = np.array([])
+        self.oc_grid = np.array([])
+
         self.poses = cast(List[Pose], domain.things.get(Pose))
         self.objects = cast(List[Object], domain.things.get(Object))
 
         if self.grid_limits is None:
             self.grid_limits = self.compute_grid_limits()
 
-        self.grid_size = self.compute_grid_size()
-
     def compute_grid_limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         xs = [pose.pos[0] for pose in self.poses]
         ys = [pose.pos[1] for pose in self.poses]
 
-        min_x, max_x = min(xs) - self.grid_res, max(xs) + self.grid_res
-        min_y, max_y = min(ys) - self.grid_res, max(ys) + self.grid_res
+        min_x, max_x = min(xs) - 3*self.col_margin, max(xs) + 3*self.col_margin
+        min_y, max_y = min(ys) - 3*self.col_margin, max(ys) + 3*self.col_margin
 
         grid_limits = ((min_x, max_x), (min_y, max_y))
         return grid_limits
 
-    def compute_grid_size(self) -> Tuple[int, int]:
-        if self.grid_limits is None:
-            raise ValueError("Grid limits not set. Cannot compute grid size.")
-
-        (min_x, max_x), (min_y, max_y) = self.grid_limits
-
-        x_size = int(np.ceil((max_x - min_x) / self.grid_res))
-        y_size = int(np.ceil((max_y - min_y) / self.grid_res))
-
-        self.grid_size = (x_size, y_size)
-        return self.grid_size
-
-    def create_grid(self) -> Tuple[np.ndarray, np.ndarray]:
+    def create_grid(self) -> np.ndarray:
         grid = np.array([])
-        if self.grid_size is None:
-            raise ValueError("Grid size not computed. Cannot create grid.")
-
         if self.grid_limits is None:
             raise ValueError("Grid limits not set. Cannot create grid.")
 
         (min_x, max_x), (min_y, max_y) = self.grid_limits
-        x_size, y_size = self.grid_size
+
+        grid_x = np.arange(min_x, max_x, self.grid_res)
+        grid_y = np.arange(min_y, max_y, self.grid_res)
 
         grid = np.meshgrid(
-            np.linspace(min_x, max_x, x_size),
-            np.linspace(min_y, max_y, y_size)
+            grid_x,
+            grid_y
         )
 
-        return grid
+        grid = np.array(grid).T.reshape(-1, 2)
+        self.grid = grid
 
-    def create_occupancy_grid_map(self) -> np.ndarray:
-        grid = np.array([])
-        if self.grid_size is None:
-            raise ValueError("Grid size not computed. Cannot create grid.")
+        return self.grid
 
-        if self.grid_limits is None:
-            raise ValueError("Grid limits not set. Cannot create grid.")
-
-        (min_x, max_x), (min_y, max_y) = self.grid_limits
-        x_size, y_size = self.grid_size
-
-        grid = np.zeros((x_size, y_size), dtype=int)
+    def assign_occupancy(self, grid: np.ndarray) -> np.ndarray:
+        grid_tree = KDTree(grid)
+        oc_grid = np.zeros_like(grid[:,0], dtype=int) # 0: free, 1: occupied
 
         for obj in self.objects:
-            obj_pose = cast(Pose, obj.at)
-            obj_x, obj_y, _ = obj_pose.pos
-            obj_x, obj_y = abs(int(obj_x - min_x)), abs(int(max_y - obj_y))
+            obj_pos = cast(Pose, obj.at).pos[:2]
+            occupied_indices = grid_tree.query_ball_point(obj_pos, r=self.col_margin)
+            oc_grid[occupied_indices] = 1
 
-            print(f"Object {obj.name} of cartesian position ({obj_pose.pos[0]}, {obj_pose.pos[1]}) at grid position ({obj_x}, {obj_y})")
+        self.oc_grid = oc_grid
+        return self.oc_grid
 
-            col_radius = int(np.ceil(self.col_margin))
-            occupied_extents = [np.arange(max(0, obj_x - col_radius), min(x_size, obj_x + col_radius + 1)),
-                               np.arange(max(0, obj_y - col_radius), min(y_size, obj_y + col_radius + 1))]
-            grid[np.ix_(occupied_extents[0], occupied_extents[1])] = 1
+    def create_occupancy_grid_map(self) -> np.ndarray:
+        grid = self.create_grid()
+        oc_grid = self.assign_occupancy(grid)
 
-        return grid
+        self.oc_grid_map = oc_grid
+        return self.oc_grid_map
 
-    def plot_occupancy_grid_map(self, grid: np.ndarray) -> None:
+    def plot_occupancy_grid_map(self, grid: np.ndarray, oc_grid: np.ndarray) -> None:
         if self.grid_limits is None:
             raise ValueError("Grid limits not set. Cannot plot grid.")
 
-        if self.grid_size is None:
-            raise ValueError("Grid size not computed. Cannot plot grid.")
-
         plt.figure(figsize=(8, 8))
 
-        # Plot black dots for occupied cells
-        for i in range(grid.shape[0]):
-            for j in range(grid.shape[1]):
-                if grid[i, j] == 1:
-                    rect = patches.Rectangle((i + self.grid_limits[0][0], self.grid_limits[1][1] - j), 1, 1, color='black')
-                    plt.gca().add_patch(rect)
+        (min_x, max_x), (min_y, max_y) = self.grid_limits
 
-        # Make grid the same resolution as specified
-        # plt.xticks(np.arange(self.grid_limits[0][0], self.grid_limits[0][1], self.grid_res))
-        # plt.yticks(np.arange(self.grid_limits[1][0], self.grid_limits[1][1], self.grid_res))
-        plt.grid(True)
+        for point, occ in zip(grid, oc_grid):
+            color = 'black' if occ == 1 else 'white'
+            rect = patches.Rectangle((point[0], point[1]), self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor=color)
+            plt.gca().add_patch(rect)
 
-        plt.xlabel('X (meters)')
-        plt.ylabel('Y (meters)')
-        plt.title('Occupancy Grid Map')
-        plt.xlim(self.grid_limits[0][0], self.grid_limits[0][1])
-        plt.ylim(self.grid_limits[1][0], self.grid_limits[1][1])
-        # plt.show()
+        for obj in self.objects:
+            obj_pos = cast(Pose, obj.at).pos[:2]
+            plt.plot(obj_pos[0] + self.grid_res/2, obj_pos[1] + self.grid_res/2, marker='s', color='red', markersize=10)
+
+        plt.xlim(min_x, max_x)
+        plt.ylim(min_y, max_y)
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.title("Occupancy Grid Map")
+        plt.xlabel("X")
+        plt.ylabel("Y")
