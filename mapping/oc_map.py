@@ -101,7 +101,7 @@ class OccupancyGridMap:
         for i in range(grid.shape[0]):
             for j in range(grid.shape[1]):
                 if grid[i, j] == 1:
-                    rect = patches.Rectangle((i * self.grid_res, j * self.grid_res), self.grid_res, self.grid_res, color='black')
+                    rect = patches.Rectangle((i + self.grid_limits[0][0], self.grid_limits[1][1] - j), 1, 1, color='black')
                     plt.gca().add_patch(rect)
 
         # Make grid the same resolution as specified
@@ -114,4 +114,4 @@ class OccupancyGridMap:
         plt.title('Occupancy Grid Map')
         plt.xlim(self.grid_limits[0][0], self.grid_limits[0][1])
         plt.ylim(self.grid_limits[1][0], self.grid_limits[1][1])
-        plt.show()
+        # plt.show()
