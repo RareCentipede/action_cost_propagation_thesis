@@ -12,7 +12,7 @@ class CommandDispatcher:
         self.objects = []
         self.things = domain.things
         self.name_things = domain.name_things
-        self.init_states = domain.current_state
+        self.init_states = domain.states[0]
         self.positions = domain.things.get(Pose, [])
         self.default_orientation = p.getQuaternionFromEuler([0, 0, 0])
 
@@ -49,8 +49,6 @@ class CommandDispatcher:
                 entity_id = p.loadURDF(self.entity_urdf_dict[urdf_key], pos, self.default_orientation)
                 self.entity_ids.append(entity_id)
                 self.object_entity_dict[obj_name] = entity_id
-
-        print(self.object_entity_dict)
 
     def run_simulation(self, commands: List[Tuple[str, List[str]]], duration: int = 0) -> None:
         for entity in self.entity_ids:
@@ -106,7 +104,7 @@ class CommandDispatcher:
         entity_id = self.object_entity_dict[args[0]]
         target_pos = list(cast(Pose, self.name_things.get(args[2])).pos)
         target_pos[0] += 1.2
-        target_pos[2] = 0.4
+        target_pos[2] = 0.5
 
         p.removeBody(entity_id)
         new_entity_id = p.loadURDF(self.entity_urdf_dict[args[0]], target_pos, self.default_orientation)

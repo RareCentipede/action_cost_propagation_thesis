@@ -193,7 +193,7 @@ def apply_best_action_selection(node_action_values: Dict, current_nodes: List[No
 
     return new_state, plan
 
-def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: Domain) -> List[str]:
+def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: Domain) -> List[Tuple[str, List[str]]]:
     goal_blocks = [g_node.values[1] for g_node in goal_nodes.values()]
     goal_positions = [g_node.values[-1] for g_node in goal_nodes.values()]
     actions_in_domain = domain.actions
