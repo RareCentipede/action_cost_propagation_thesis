@@ -11,7 +11,8 @@ def main():
     dtg = create_domain_transition_graph(block_domain)
     goal_nodes = create_goal_nodes(block_domain, dtg)
 
-    plan = solve_dtg_basic(goal_nodes, dtg, block_domain)
+    print(type(list(block_domain.current_state.values())[0]))
+    # plan = solve_dtg_basic(goal_nodes, dtg, block_domain)
     # for step in plan:
         # print(step)
 
