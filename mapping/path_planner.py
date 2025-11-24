@@ -17,7 +17,10 @@ def create_nx_nodes(ocm: OccupancyGridMap) -> nx.Graph:
     for point in grid:
         g.add_node((point[0], point[1]))
 
-    for node in g.nodes:
+    for node, occ in zip(g.nodes, oc_grid):
+        if occ == 1:
+            continue
+
         neighbors_idx = grid_tree.query(node, k=8)[1].tolist()
         for n_idx in neighbors_idx: #type: ignore
             neighbor = tuple(grid[n_idx])
