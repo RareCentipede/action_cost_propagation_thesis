@@ -24,6 +24,8 @@ class OccupancyGridMap:
         if self.grid_limits is None:
             self.grid_limits = self.compute_grid_limits()
 
+        self.grid_limits = cast(Tuple[Tuple[float, float], Tuple[float, float]], self.grid_limits)
+
     def compute_grid_limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         xs = [pose.pos[0] for pose in self.poses]
         ys = [pose.pos[1] for pose in self.poses]
