@@ -23,7 +23,7 @@ def main():
     start = (-6.0, -2.0)
     goal = (0.0, 7.0)
 
-    path = np.array(astar(graph, start, goal))
+    path = np.array(astar(graph, ocm.oc_grid, start, goal))
     ocm.plot_occupancy_grid_map(ocm.grid, ocm.oc_grid)
     plt.plot(path[:,0], path[:,1], color='red')
     plt.show()
