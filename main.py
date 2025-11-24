@@ -2,6 +2,7 @@ from eas.EAS import State
 from eas.block_domain import Object, Pose, create_goal_nodes, domain, create_domain_transition_graph
 from eas.eas_parser import parse_configs, build_physical_relations
 from planners.basic_planner import solve_dtg_basic
+from dispatcher.dispatcher import CommandDispatcher
 
 def main():
     config_name = "stack_2_stack"
@@ -13,8 +14,11 @@ def main():
 
     # print(type(list(block_domain.current_state.values())[0]))
     plan = solve_dtg_basic(goal_nodes, dtg, block_domain)
-    for step in plan:
-        print(step)
+    # for step in plan:
+    #     print(step)
+    cd = CommandDispatcher(block_domain)
+    cd.initialize_objects()
+    cd.run_simulation(plan)
 
 if __name__ == "__main__":
     main()

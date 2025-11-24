@@ -172,11 +172,11 @@ def apply_best_action_selection(node_action_values: Dict, current_nodes: List[No
         action = cast(Tuple, action)
         _, conds, effects = action
 
-        action_log = f"{current_nodes[best_node_key].name} --[{action_name}]--> {target.name}"
+        # action_log = f"{current_nodes[best_node_key].name} --[{action_name}]--> {target.name}"
         current_node = current_nodes[best_node_key]
-        action = f"{action_name} {current_node.values[0].name} {current_node.values[1].name} {target.values[-1].name if target.values[-1] else None}"
+        action = (action_name, [current_node.values[0].name, current_node.values[1].name, target.values[-1].name if target.values[-1] else None])
         plan.append(action)
-        print(action_log)
+
         new_state = apply_action(current_state, conds, action_params, effects)
         if len(domain.states) >= 2:
             if new_state == domain.states[-2]:
@@ -218,7 +218,7 @@ def solve_dtg_basic(goal_nodes: Dict[str, Node], dtg: Dict[str, Node], domain: D
         new_state, new_actions = apply_best_action_selection(node_action_values, current_nodes, domain)
         actions.extend(new_actions)
 
-        time.sleep(0.1)
+        # time.sleep(0.1)
         if new_state:
             domain.update_state(new_state)
             # print(new_state)
