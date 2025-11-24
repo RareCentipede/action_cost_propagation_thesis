@@ -90,8 +90,8 @@ class OccupancyGridMap:
 
         for obj in self.objects:
             obj_pos = cast(Pose, obj.at).pos[:2]
-            # plt.plot(obj_pos[0] - self.grid_res/2, obj_pos[1] - self.grid_res/2, marker='s', color='red', markersize=10)
-            plt.scatter(obj_pos[0], obj_pos[1], marker='s', color='red', s=15)
+            rect = patches.Rectangle((obj_pos[0]-self.grid_res/2, obj_pos[1]-self.grid_res/2), self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor='red')
+            plt.gca().add_patch(rect)
 
         plt.xlim(min_x, max_x)
         plt.ylim(min_y, max_y)
