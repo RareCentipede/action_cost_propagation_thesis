@@ -17,7 +17,7 @@ def main():
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
-    ocm = OccupancyGridMap(block_domain, grid_res=0.5, col_margin=0.5)
+    ocm = OccupancyGridMap(block_domain, grid_res=0.5, col_margin=0.0)
     grid = ocm.create_occupancy_grid_map()
     graph = create_nx_nodes(ocm)
 
@@ -28,9 +28,9 @@ def main():
     ocm.plot_occupancy_grid_map(ocm.grid, ocm.oc_grid)
     plt.plot(path[:,0], path[:,1], color='red')
     plt.show()
-    cd = CommandDispatcher(block_domain)
-    cd.initialize_objects()
-    time.sleep(10.0)
+    # cd = CommandDispatcher(block_domain)
+    # cd.initialize_objects()
+    # time.sleep(10.0)
 
 if __name__ == "__main__":
     main()

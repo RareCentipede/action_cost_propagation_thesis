@@ -30,8 +30,8 @@ class OccupancyGridMap:
         xs = [pose.pos[0] for pose in self.poses]
         ys = [pose.pos[1] for pose in self.poses]
 
-        min_x, max_x = min(xs) - 3*self.col_margin, max(xs) + 3*self.col_margin
-        min_y, max_y = min(ys) - 3*self.col_margin, max(ys) + 3*self.col_margin
+        min_x, max_x = min(xs) - 2/self.grid_res, max(xs) + 2/self.grid_res
+        min_y, max_y = min(ys) - 2/self.grid_res, max(ys) + 2/self.grid_res
 
         grid_limits = ((min_x, max_x), (min_y, max_y))
         return grid_limits
@@ -85,12 +85,14 @@ class OccupancyGridMap:
 
         for point, occ in zip(grid, oc_grid):
             color = 'black' if occ == 1 else 'white'
-            rect = patches.Rectangle((point[0]-self.grid_res/2, point[1]-self.grid_res/2), self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor=color)
+            rect = patches.Rectangle((point[0]-self.grid_res/2, point[1]-self.grid_res/2),
+                                     self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor=color)
             plt.gca().add_patch(rect)
 
         for obj in self.objects:
             obj_pos = cast(Pose, obj.at).pos[:2]
-            rect = patches.Rectangle((obj_pos[0]-self.grid_res/2, obj_pos[1]-self.grid_res/2), self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor='red')
+            rect = patches.Rectangle((obj_pos[0]-self.grid_res/2, obj_pos[1]-self.grid_res/2),
+                                     self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor='red')
             plt.gca().add_patch(rect)
 
         plt.xlim(min_x, max_x)
