@@ -8,13 +8,13 @@ SimpleCondition = NewType('SimpleCondition', Tuple[str, str, Any]) # (object_nam
 ComputedCondition = Callable[..., bool]
 Condition = Union[SimpleCondition, ComputedCondition]
 
-state_state = Enum('StateState', 'alive dead goal')
+state_state = Enum('StateState', 'ALIVE DEAD GOAL')
 
 @dataclass(eq=False)
 class LinkedState:
     state_id: int
     state: State
-    type_: state_state = state_state.alive
+    type_: state_state = state_state.ALIVE
     parent: 'LinkedState | None' = None
     edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list)
 
@@ -88,8 +88,9 @@ class Domain:
 
         return True
 
-    def update_state(self, new_state: State):
-        self.states.append(new_state)
+    def update_state(self, new_state: State, append: bool = True):
+        if append:
+            self.states.append(new_state)
 
         for name, value_name in new_state.items():
             parent_name, variable_name = tuple(name.split('_', 1))
