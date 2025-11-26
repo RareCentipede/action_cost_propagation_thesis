@@ -29,6 +29,8 @@ def main():
     while alive_states:
         alive_state = alive_states.pop(0)
         s_current = alive_state.state
+        block_domain.update_state(s_current, append=False)
+        states_in_branch = [s_current]
 
         robot = block_domain.things.get(Robot, [])[0]
         robot = cast(Robot, robot)
@@ -67,7 +69,7 @@ def main():
                     continue
 
                 s_new = apply_action(s_current, conds, action_params, effects)
-                if s_new == s_current:
+                if s_new in states_in_branch:
                     continue
 
                 # print(f"Applying action {action_name} to reach node {to_node.name} resulting in new state.")
@@ -79,6 +81,7 @@ def main():
                 ancestor = alive_state.parent
                 if ancestor is None or ((action_name, alive_state) not in ancestor.edges):
                     alive_states.append(s_new_linked)
+                    states_in_branch.append(s_new)
                 else:
                     # print("Repeated action, marked state as DEAD.")
                     s_new_linked.type_ = state_state.DEAD
