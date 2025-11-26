@@ -1,11 +1,33 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Tuple, List, NewType, Dict, Union, Callable, Type, ClassVar, cast
 from copy import deepcopy
-
+    
 State = NewType('State', Dict[str, Any]) # {object_name}_{variable_name}: value
 SimpleCondition = NewType('SimpleCondition', Tuple[str, str, Any]) # (object_name, variable_name, value)
 ComputedCondition = Callable[..., bool]
 Condition = Union[SimpleCondition, ComputedCondition]
+
+state_state = Enum('StateState', 'alive dead goal')
+
+@dataclass(eq=False)
+class LinkedState:
+    state_id: int
+    state: State
+    type_: state_state = state_state.alive
+    parent: 'LinkedState | None' = None
+    edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list)
+
+    def __hash__(self):
+        return hash(self.state.__str__())
+
+    def __eq__(self, other):
+        if not isinstance(other, LinkedState):
+            return False
+        return self.state == other.state
+
+    def __str__(self):
+        return f"State {self.state_id} --> {[e[1].state_id for e in self.edges]}"
 
 @dataclass(eq=False)
 class Thing:
