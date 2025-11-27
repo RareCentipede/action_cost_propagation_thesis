@@ -8,7 +8,7 @@ from eas.EAS import State, Node, Domain, LinkedState, state_state
 from typing import Tuple, Dict, cast, List
 
 def main():
-    config_name = "basic"
+    config_name = "simple"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
@@ -28,8 +28,12 @@ def main():
 
     while alive_states:
         alive_state = alive_states.pop(0)
+
+        if alive_state.type_ != state_state.ALIVE:
+            continue
+
         s_current = alive_state.state
-        block_domain.update_state(s_current, append=False)
+        block_domain.update_state(s_current)
         states_in_branch = [s_current]
 
         robot = block_domain.things.get(Robot, [])[0]
@@ -51,8 +55,9 @@ def main():
             if pos != robot_pos or block not in goal_blocks:
                 current_nodes.remove(node)
 
-        print(f"Expanding state {alive_state.state_id} with nodes {[node.name for node in current_nodes]}")
-
+        # print(f"Expanding state {alive_state.state_id} with nodes {[node.name for node in current_nodes]}")
+        print(f"Number of edges to explore: {len(alive_state.edges)}")
+        alive = False
         while current_nodes:
             node = current_nodes.pop(0)
 
@@ -74,24 +79,34 @@ def main():
 
                 # print(f"Applying action {action_name} to reach node {to_node.name} resulting in new state.")
 
-                state_counter += 1
-                s_new_linked = LinkedState(state_counter, s_new, parent=alive_state)
-                alive_state.edges.append((action_name, s_new_linked))
-
                 ancestor = alive_state.parent
                 if ancestor is None or ((action_name, alive_state) not in ancestor.edges):
+                    state_counter += 1
+                    s_new_linked = LinkedState(state_counter, s_new, parent=alive_state)
+                    alive_state.edges.append((action_name, s_new_linked))
                     alive_states.append(s_new_linked)
-                    states_in_branch.append(s_new)
-                else:
-                    # print("Repeated action, marked state as DEAD.")
-                    s_new_linked.type_ = state_state.DEAD
 
-            block_domain.update_state(s_current, append=False)
-            if block_domain.goal_reached:
-                print("Goal reached!")
-                s_new_linked.type_ = state_state.GOAL
-                goal_linked_states.append(s_new_linked)
-                break
+                    states_in_branch.append(s_new)
+                    alive = True
+                    block_domain.update_state(s_new)
+
+                    # new_nodes = query_nodes(dtg, s_new)
+                    # print(f"Reached new state {state_counter} with nodes {[n.name for n in new_nodes]} via action {action_name}")
+
+                    if block_domain.goal_reached:
+                        print("Goal reached!")
+                        s_new_linked.type_ = state_state.GOAL
+                        goal_linked_states.append(s_new_linked)
+                        break
+
+                    block_domain.reset_state()
+
+        if not alive:
+            alive_state.type_ = state_state.DEAD
+            ancestor = alive_state.parent
+            if ancestor is not None:
+                if len(ancestor.edges) == 1:
+                    ancestor.type_ = state_state.DEAD
 
         if len(alive_state.edges) == 0:
             print("No further actions possible, marking state as DEAD.")
