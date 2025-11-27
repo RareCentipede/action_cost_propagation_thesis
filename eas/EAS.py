@@ -88,9 +88,8 @@ class Domain:
 
         return True
 
-    def update_state(self, new_state: State, append: bool = True):
-        if append:
-            self.states.append(new_state)
+    def update_state(self, new_state: State) -> None:
+        self.states.append(new_state)
 
         for name, value_name in new_state.items():
             parent_name, variable_name = tuple(name.split('_', 1))
@@ -101,6 +100,14 @@ class Domain:
                 if variable_name == 'supported':
                     continue
                 setattr(thing, variable_name, value)
+
+    def reset_state(self) -> None:
+        """
+            Remove the last state and update the state values according to the new last state.
+        """
+        self.states.pop(-1)
+        self.update_state(self.current_state)
+        self.states.pop(-1)
 
 @dataclass
 class Node:
