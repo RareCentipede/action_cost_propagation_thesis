@@ -27,6 +27,13 @@ def main():
     goal_linked_states = []
 
     while alive_states:
+        """
+            Things to try:
+                - Instead of always creating new linked states, check if the new state already exists in the alive states or goal states.
+                - Do backtracking when a state is marked as DEAD or GOAL, and from there explore new branches.
+                - Instead of applying all possible actions, choose one and keep track of it, so that when backtracking different actions
+                  can be tried, and the states are well connected and not duplicated.
+        """
         alive_state = alive_states.pop(0)
 
         if alive_state.type_ != state_state.ALIVE:
