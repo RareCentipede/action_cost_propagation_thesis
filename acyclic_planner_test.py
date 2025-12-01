@@ -42,15 +42,15 @@ def main():
     print([[b[0].name, b[1], b[2].name] for b in current_linked_state.branches_to_explore])
     while current_linked_state.branches_to_explore:
         # Print the current tree structure
-        # print_tree(s0, current_linked_state)
+        print_tree(s0, current_linked_state)
         block_pos = [cast(Object, obj).at for obj in block_domain.things.get(Object, [])]
         block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
 
-        print(f"Current state id: {current_linked_state.state_id}")
+        # print(f"Current state id: {current_linked_state.state_id}")
         current_state = current_linked_state.state
         branch = current_linked_state.branches_to_explore.pop(0)
 
-        print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
+        # print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
 
         node, action_name, target_node = branch
         action_params = parse_action_params(action_name, node, target_node)
@@ -61,16 +61,16 @@ def main():
 
         action_applicable = is_action_applicable(conds, action_params)
         if action_applicable:
-            print(f"Applying action {action_name} from {node.name} to {target_node.name}")
+            # print(f"Applying action {action_name} from {node.name} to {target_node.name}")
             s_new = apply_action(current_state, conds, action_params, effects)
 
             ancestor = current_linked_state.parent
             if ancestor:
                 if s_new == ancestor.state:
-                    print("New state is the same as an ancestor state, skipping to avoid cycle.")
+                    # print("New state is the same as an ancestor state, skipping to avoid cycle.")
                     branching = False
                 elif (action_name, current_linked_state) in ancestor.edges:
-                    print("This action from this state was already used to reach the parent state, skipping to avoid cycle.")
+                    # print("This action from this state was already used to reach the parent state, skipping to avoid cycle.")
                     branching = False
                 else:
                     branching = True
@@ -79,7 +79,7 @@ def main():
 
             if branching:
                 state_counter += 1
-                print(f"Unique state {state_counter} found")
+                # print(f"Unique state {state_counter} found")
                 s_new_linked = LinkedState(state_counter, s_new, parent=current_linked_state)
                 current_linked_state.edges.append((action_name, s_new_linked))
 
@@ -96,8 +96,8 @@ def main():
                     current_nodes = prune_unrelated_nodes(current_nodes, goal_blocks, block_pos, robot_pos)
                     possible_actions = unpack_actions_from_nodes(current_nodes, goal_positions, block_pos, robot_pos)
                     current_linked_state.branches_to_explore = possible_actions
-        else:
-            print(f"Action [{action_name}] not applicable")
+        # else:
+            # print(f"Action [{action_name}] not applicable")
 
         # Backtrack to somewhere with unexplored branches
         while (not current_linked_state.branches_to_explore) or (current_linked_state.type_ == state_state.GOAL):
