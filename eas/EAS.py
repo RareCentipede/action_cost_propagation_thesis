@@ -16,7 +16,7 @@ class LinkedState:
     state: State
     type_: state_state = state_state.ALIVE
     parent: 'LinkedState | None' = None
-    branches_to_explore: List[Tuple[str, 'Node']] = field(default_factory=list)  # action name, target node
+    branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # action name, target node
     edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list)
 
     def __hash__(self):

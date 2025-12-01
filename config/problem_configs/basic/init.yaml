@@ -19,19 +19,19 @@ block3:
   color: [0.0, 1.0, 0.0]
   size: 1.0
 
-block4:
-  type: "dynamic"
-  position: [-3.0, 3.0, 0.5]
-  orientation: [0.0, 0.0, 0.0]
-  color: [0.0, 0.0, 1.0]
-  size: 1.0
+# block4:
+#   type: "dynamic"
+#   position: [-3.0, 3.0, 0.5]
+#   orientation: [0.0, 0.0, 0.0]
+#   color: [0.0, 0.0, 1.0]
+#   size: 1.0
 
-block5:
-  type: "dynamic"
-  position: [-3.0, 0.0, 0.5]
-  orientation: [0.0, 0.0, 0.0]
-  color: [1.0, 1.0, 0.0]
-  size: 1.0
+# block5:
+#   type: "dynamic"
+#   position: [-3.0, 0.0, 0.5]
+#   orientation: [0.0, 0.0, 0.0]
+#   color: [1.0, 1.0, 0.0]
+#   size: 1.0
 
 robot:
   type: "robot"
