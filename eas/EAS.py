@@ -142,7 +142,7 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
 
         current_val = getattr(param, variable_name, None)
         if current_val != target:
-            if verbose and variable_name == 'supported':
+            if verbose:
                 print(f"\nCondition failed: {param.name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 

@@ -9,7 +9,7 @@ from eas.EAS import State, Node, Domain, LinkedState, state_state
 from typing import Tuple, Dict, cast, List
 
 def main():
-    config_name = "basic"
+    config_name = "stacked"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
@@ -20,41 +20,10 @@ def main():
 
     goal_blocks = [g_node.values[1].name for g_node in goal_nodes.values()]
     goal_positions = [g_node.values[-1].name for g_node in goal_nodes.values()]
-    actions_in_domain = domain.actions
 
     state_counter = 0
     s0 = LinkedState(state=current_state, state_id=state_counter)
-    alive_states = [s0]
     goal_linked_states = []
-
-    """
-        Tree branching idea:
-            - Initialization:
-                - Create initial linked state s0 with current state.
-                - Set current linked state to s0.
-            - Loop:
-                - From current linked state, query current nodes.
-                - Prune nodes that are not relevant to the goal or would lead to cycles.
-                - Find all possible actions from current nodes, and add them to branches_to_explore of current linked state.
-                - While branches_to_explore is not empty:
-                    - Pop an action from branches_to_explore.
-                    - Check if action is applicable.
-                        - Apply action to get new state s_new.
-                        - Check if s_new was reached using the same action as parent from ancestor, if so skip to avoid cycles.
-                        - Create new linked state s_new_linked with s_new, set parent to current linked state.
-                        - Add (action, s_new_linked) to edges of current linked state.
-                        - Update domain state to s_new.
-                        - If goal reached:
-                            - Mark s_new_linked as GOAL.
-                            - Add s_new_linked to goal linked states.
-                            - Set mode to backtracking.
-                        - Query current nodes from s_new, prune irrelevant nodes, and add possible actions to branches_to_explore of s_new_linked.
-                        - Set current linked state to s_new_linked.
- 
-                    - If branches_to_explore is empty:
-                        - Set current linked state to parent of current linked state (backtrack).
-                        - If no parent (reached root), terminate loop.
-    """
 
     current_linked_state = s0
     current_nodes = query_nodes(dtg, current_linked_state.state)
@@ -63,8 +32,10 @@ def main():
     robot = cast(Robot, robot)
     robot_pos = robot.at.name
 
-    current_nodes = prune_unrelated_nodes(current_nodes, goal_blocks, goal_positions, robot_pos)
-    possible_actions = unpack_actions_from_nodes(current_nodes, block_domain)
+    block_pos = [cast(Object, obj).at for obj in block_domain.things.get(Object, [])]
+    block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
+    current_nodes = prune_unrelated_nodes(current_nodes, goal_blocks, block_pos, robot_pos)
+    possible_actions = unpack_actions_from_nodes(current_nodes, goal_positions, block_pos, robot_pos)
     current_linked_state.branches_to_explore = possible_actions
     branching = True
 
@@ -72,6 +43,8 @@ def main():
     while current_linked_state.branches_to_explore:
         # Print the current tree structure
         # print_tree(s0, current_linked_state)
+        block_pos = [cast(Object, obj).at for obj in block_domain.things.get(Object, [])]
+        block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
 
         print(f"Current state id: {current_linked_state.state_id}")
         current_state = current_linked_state.state
@@ -116,11 +89,12 @@ def main():
                     current_linked_state.type_ = state_state.GOAL
                     goal_linked_states.append(s_new_linked)
                     print(f"Goal reached at state id {s_new_linked.state_id}!")
+                    break
                 else:
                     current_nodes = query_nodes(dtg, current_linked_state.state)
                     robot_pos = robot.at.name
-                    current_nodes = prune_unrelated_nodes(current_nodes, goal_blocks, goal_positions, robot_pos)
-                    possible_actions = unpack_actions_from_nodes(current_nodes, block_domain)
+                    current_nodes = prune_unrelated_nodes(current_nodes, goal_blocks, block_pos, robot_pos)
+                    possible_actions = unpack_actions_from_nodes(current_nodes, goal_positions, block_pos, robot_pos)
                     current_linked_state.branches_to_explore = possible_actions
         else:
             print(f"Action [{action_name}] not applicable")
@@ -137,8 +111,8 @@ def main():
             current_linked_state = current_linked_state.parent
             block_domain.update_state(current_linked_state.state)
         print("-----------------------------------")
-        # time.sleep(1)
-    print([g.state for g in goal_linked_states])
+        # time.sleep(0.5)
+    # print([g.state for g in goal_linked_states])
 
 def print_tree(root: LinkedState, current: LinkedState | None = None) -> None:
     """
@@ -164,26 +138,36 @@ def print_tree(root: LinkedState, current: LinkedState | None = None) -> None:
             print(f"  └─[{action}]→ S{child.state_id}{child_status}{child_mark}")
             q.append(child)
 
-def unpack_actions_from_nodes(nodes: List[Node], domain: Domain) -> List[Tuple[Node, str, Node]]:
+def unpack_actions_from_nodes(nodes: List[Node], goal_pos: List[str], block_pos: List[str], robot_pos: str) -> List[Tuple[Node, str, Node]]:
     possible_actions = []
 
     for node in nodes:
         for edge in node.edges:
             action_name, target_node = edge
+
+            split_base_node_name = node.name.split('_')
+            split_target_node_name = target_node.name.split('_')
+            base = split_base_node_name[0]
+            base_pos = split_base_node_name[-1]
+
+            target_pos = split_target_node_name[-1]
+
+            if base == 'robot' and (target_pos not in block_pos and target_pos not in goal_pos):
+                continue
+            elif base != 'robot' and ((target_pos == 'None' and base_pos != robot_pos) or (target_pos != 'None' and target_pos not in goal_pos)):
+                continue
+
             possible_actions.append((node, action_name, target_node))
 
     return possible_actions
 
-def prune_unrelated_nodes(nodes: List[Node], goal_blocks: List[str], goal_pos: List[str], robot_pos: str) -> List[Node]:
+def prune_unrelated_nodes(nodes: List[Node], goal_blocks: List[str], block_pos: List[str], robot_pos: str) -> List[Node]:
     for node in nodes:
         split_node_name = node.name.split('_')
         block = split_node_name[0]
         pos = split_node_name[-1]
 
-        if block != 'robot':
-            block = block[:-1] # remove the block number at the end
-
-        if pos != robot_pos or block not in goal_blocks or robot_pos not in goal_pos:
+        if block != 'robot' and ((pos != robot_pos) and (pos != 'None') or block not in goal_blocks):
             nodes.remove(node)
 
     return nodes
