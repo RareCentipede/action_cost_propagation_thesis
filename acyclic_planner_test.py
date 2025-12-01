@@ -26,22 +26,48 @@ def main():
     alive_states = [s0]
     goal_linked_states = []
 
-    while alive_states:
-        """
-            Things to try:
-                - Instead of always creating new linked states, check if the new state already exists in the alive states or goal states.
-                - Do backtracking when a state is marked as DEAD or GOAL, and from there explore new branches.
-                - Instead of applying all possible actions, choose one and keep track of it, so that when backtracking different actions
-                  can be tried, and the states are well connected and not duplicated.
-        """
-        alive_state = alive_states.pop(0)
+    """
+        Things to try:
+            - Instead of always creating new linked states, check if the new state already exists in the alive states or goal states.
+            - Do backtracking when a state is marked as DEAD or GOAL, and from there explore new branches.
+            - Instead of applying all possible actions, choose one and keep track of it, so that when backtracking different actions
+                can be tried, and the states are well connected and not duplicated.
+    """
 
-        if alive_state.type_ != state_state.ALIVE:
-            continue
+    """
+        Tree branching idea:
+            - Initialization:
+                - Create initial linked state s0 with current state.
+                - Set current linked state to s0.
+            - Loop:
+                - From current linked state, query current nodes.
+                - Prune nodes that are not relevant to the goal or would lead to cycles.
+                - Find all possible actions from current nodes, and add them to branches_to_explore of current linked state.
+                - While branches_to_explore is not empty:
+                    - Pop an action from branches_to_explore.
+                    - Check if action is applicable.
+                        - Apply action to get new state s_new.
+                        - Check if s_new was reached using the same action as parent from ancestor, if so skip to avoid cycles.
+                        - Create new linked state s_new_linked with s_new, set parent to current linked state.
+                        - Add (action, s_new_linked) to edges of current linked state.
+                        - Update domain state to s_new.
+                        - If goal reached:
+                            - Mark s_new_linked as GOAL.
+                            - Add s_new_linked to goal linked states.
+                            - Set mode to backtracking.
+                        - Query current nodes from s_new, prune irrelevant nodes, and add possible actions to branches_to_explore of s_new_linked.
+                        - Set current linked state to s_new_linked.
+ 
+                    - If branches_to_explore is empty:
+                        - Set current linked state to parent of current linked state (backtrack).
+                        - If no parent (reached root), terminate loop.
+    """
+
+    while alive_states:
+        alive_state = alive_states.pop(0)
 
         s_current = alive_state.state
         block_domain.update_state(s_current)
-        states_in_branch = [s_current]
 
         robot = block_domain.things.get(Robot, [])[0]
         robot = cast(Robot, robot)
@@ -62,62 +88,48 @@ def main():
             if pos != robot_pos or block not in goal_blocks:
                 current_nodes.remove(node)
 
-        # print(f"Expanding state {alive_state.state_id} with nodes {[node.name for node in current_nodes]}")
-        print(f"Number of edges to explore: {len(alive_state.edges)}")
-        alive = False
-        while current_nodes:
-            node = current_nodes.pop(0)
+        node_idx = 0
+        terminate = False
+        while not terminate:
+            node = current_nodes[node_idx]
 
-            for edge in node.edges:
-                action_name, to_node = edge
-                action_params = parse_action_params(action_name, node, to_node)
-                action = block_domain.actions.get(action_name)
-                action = cast(Tuple, action)
+            branching = True
+            alive = False
+            while branching:
+                if not node.edges:
+                    break
 
-                _, conds, effects = action
+                edge = node.edges.pop(0)
+                action_name, target = edge
+                action_params = parse_action_params(action_name, node, target)
+
+                action_tuple = block_domain.actions.get(action_name)
+                action_tuple = cast(Tuple, action_tuple)
+
+                _, conds, effects = action_tuple        
 
                 action_applicable = is_action_applicable(conds, action_params)
                 if not action_applicable:
                     continue
+                alive = True
 
                 s_new = apply_action(s_current, conds, action_params, effects)
-                if s_new in states_in_branch:
-                    continue
-
-                # print(f"Applying action {action_name} to reach node {to_node.name} resulting in new state.")
 
                 ancestor = alive_state.parent
                 if ancestor is None or ((action_name, alive_state) not in ancestor.edges):
                     state_counter += 1
                     s_new_linked = LinkedState(state_counter, s_new, parent=alive_state)
                     alive_state.edges.append((action_name, s_new_linked))
-                    alive_states.append(s_new_linked)
 
-                    states_in_branch.append(s_new)
-                    alive = True
                     block_domain.update_state(s_new)
 
-                    # new_nodes = query_nodes(dtg, s_new)
-                    # print(f"Reached new state {state_counter} with nodes {[n.name for n in new_nodes]} via action {action_name}")
-
                     if block_domain.goal_reached:
-                        print("Goal reached!")
+                        print("\nGoal reached!\n")
                         s_new_linked.type_ = state_state.GOAL
                         goal_linked_states.append(s_new_linked)
-                        break
+                        alive = False
 
-                    block_domain.reset_state()
-
-        if not alive:
-            alive_state.type_ = state_state.DEAD
-            ancestor = alive_state.parent
-            if ancestor is not None:
-                if len(ancestor.edges) == 1:
-                    ancestor.type_ = state_state.DEAD
-
-        if len(alive_state.edges) == 0:
-            print("No further actions possible, marking state as DEAD.")
-            alive_state.type_ = state_state.DEAD
+                block_domain.reset_state()
 
 if __name__ == "__main__":
     main()
