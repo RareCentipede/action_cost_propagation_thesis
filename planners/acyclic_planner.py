@@ -73,10 +73,8 @@ class AcyclicPlanner:
 
         return self.goal_linked_states
 
-    def retrace_action_sequence_back_to_root(self) -> List:
-        optimal_path: List[LinkedState] = []
+    def retrace_action_sequence_back_to_root(self) -> List[Action]:
         action_sequence = []
-        at_goal_state = True
 
         for state in self.goal_linked_states:
             while state.parent is not None:
