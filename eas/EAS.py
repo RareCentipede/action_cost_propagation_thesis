@@ -4,6 +4,7 @@ from typing import Any, Tuple, List, NewType, Dict, Union, Callable, Type, Class
 from copy import deepcopy
     
 State = NewType('State', Dict[str, Any]) # {object_name}_{variable_name}: value
+Action = NewType('Action', Tuple[str, List[Any]]) # (action_name, [param1, param2, ...])
 SimpleCondition = NewType('SimpleCondition', Tuple[str, str, Any]) # (object_name, variable_name, value)
 ComputedCondition = Callable[..., bool]
 Condition = Union[SimpleCondition, ComputedCondition]
@@ -15,9 +16,9 @@ class LinkedState:
     state_id: int
     state: State
     type_: state_state = state_state.ALIVE
-    parent: 'LinkedState | None' = None
-    branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # action name, target node
-    edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list)
+    parent: 'Tuple[Action, LinkedState] | None' = None # Parent state and the action connecting them. Only the root node has no parent
+    branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # home node, action name, target node
+    edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list) # action name, linked state
 
     def __hash__(self):
         return hash(self.state.__str__())

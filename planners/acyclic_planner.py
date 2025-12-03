@@ -4,7 +4,7 @@ from enum import Enum
 import numpy as np
 
 from eas.block_domain import Pose, Robot, Object, domain, create_goal_nodes, create_domain_transition_graph
-from eas.EAS import apply_action, parse_action_params, is_action_applicable, query_current_nodes, query_nodes
+from eas.EAS import Action, apply_action, parse_action_params, is_action_applicable, query_current_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, state_state, Condition
 from typing import Tuple, Dict, cast, List
 
@@ -47,61 +47,66 @@ class AcyclicPlanner:
             current_state = self.current_linked_state.state
             branch = self.current_linked_state.branches_to_explore.pop(0)
 
-            if verbosity == verbose_levels.INFO:
-                self.print_tree(self.s0, self.current_linked_state)
-            elif verbosity == verbose_levels.DEBUG:
-                print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
-                print(f"Current state id: {self.current_linked_state.state_id}")
-
             action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(branch)
+            action_args = []
+            for param in action_params.values():
+                action_args.append(param.name)
+            action = Action((action_name, action_args))
+
             if action_applicable:
-
-                if verbosity == verbose_levels.DEBUG:
-                    print(f"Applying action: {action_name} from {branch[0].name} to {branch[2].name}")
-
                 s_new = apply_action(current_state, conds, action_params, effects)
                 branching = self.is_branching_condition_met(s_new, action_name)
 
                 if branching:
                     self.state_counter += 1
-                    self.current_linked_state = self.branch_out(s_new, action_name, block_pos, self.robot)
+                    self.current_linked_state = self.branch_out(s_new, action, block_pos)
                     if self.current_linked_state.type_ == state_state.GOAL:
                         break
 
-            if verbosity == verbose_levels.DEBUG and not action_applicable:
-                print(f"Action [{action_name}] not applicable")
+            self.log(verbosity, action_name, branch, action_applicable)
 
             # Backtrack to somewhere with unexplored branches
             branching = self.backtrack(verbosity)
 
-            if verbosity == verbose_levels.DEBUG:
+            if verbosity != verbose_levels.NONE:
                 print("-----------------------------------")
 
         return self.goal_linked_states
+
+    def retrace_action_sequence_back_to_root(self) -> List:
+        optimal_path: List[LinkedState] = []
+        action_sequence = []
+        at_goal_state = True
+
+        for state in self.goal_linked_states:
+            while state.parent is not None:
+                action = state.parent[0]
+                action_sequence.insert(0, action)
+                state = state.parent[1]
+
+        return action_sequence
 
     def backtrack(self, verbosity: verbose_levels) -> bool:
         branching = True
 
         while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == state_state.GOAL):
             if self.current_linked_state.parent is None:
-                if verbosity == verbose_levels.DEBUG:
-                    print("Explored all branches from the root state.")
-
+                print("Explored all branches from the root state.")
                 branching = False
                 self.domain.update_state(self.current_linked_state.state)
                 break
 
             if verbosity == verbose_levels.DEBUG:
-                print(f"Back track from {self.current_linked_state.state_id} to {self.current_linked_state.parent.state_id}")
+                print(f"Back track from {self.current_linked_state.state_id} to {self.current_linked_state.parent[1].state_id}")
 
-            self.current_linked_state = self.current_linked_state.parent
+            self.current_linked_state = self.current_linked_state.parent[1]
             self.domain.update_state(self.current_linked_state.state)
 
         return branching
 
-    def branch_out(self, s_new: State, action_name: str, block_pos: List[str], robot: Robot) -> LinkedState:
-        s_new_linked = LinkedState(self.state_counter, s_new, parent=self.current_linked_state)
-        self.current_linked_state.edges.append((action_name, s_new_linked))
+    def branch_out(self, s_new: State, action: Action, block_pos: List[str]) -> LinkedState:
+        s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
+        self.current_linked_state.edges.append((action[0], s_new_linked))
 
         self.domain.update_state(s_new)
         self.current_linked_state = s_new_linked
@@ -120,6 +125,7 @@ class AcyclicPlanner:
     def is_branching_condition_met(self, s_new: State, action_name: str) -> bool:
         ancestor = self.current_linked_state.parent
         if ancestor:
+            ancestor = ancestor[1]
             if s_new == ancestor.state:
                 # print("New state is the same as an ancestor state, skipping to avoid cycle.")
                 branching = False
@@ -179,6 +185,18 @@ class AcyclicPlanner:
                 nodes.remove(node)
 
         return nodes
+
+    def log(self, verbosity: verbose_levels, action_name: str, branch: Tuple[Node, str, Node], action_applicable: bool) -> None:
+        if verbosity == verbose_levels.INFO:
+            self.print_tree(self.s0, self.current_linked_state)
+        elif verbosity == verbose_levels.DEBUG:
+            print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
+            print(f"Current state id: {self.current_linked_state.state_id}")
+
+            if action_applicable:
+                print(f"Applying action: {action_name} from {branch[0].name} to {branch[2].name}")
+            else:
+                print(f"Action [{action_name}] not applicable")
 
     @staticmethod
     def print_tree(root: LinkedState, current: LinkedState | None = None) -> None:
