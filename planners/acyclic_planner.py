@@ -29,8 +29,6 @@ class AcyclicPlanner:
         self.robot = cast(Robot, robot)
         self.robot_pos = self.robot.at.name
 
-        # self.verbose_level = self.verbose_levels.NONE
-
     def find_block_positions(self) -> List[str]:
         block_pos = [cast(Object, obj).at for obj in self.domain.things.get(Object, [])]
         block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
