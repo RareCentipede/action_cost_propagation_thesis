@@ -30,19 +30,10 @@ class AcyclicPlanner:
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
-    def find_block_positions(self) -> List[str]:
-        block_pos = [cast(Object, obj).at for obj in self.domain.things.get(Object, [])]
-        block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
-        return block_pos
 
     def run_acyclic_planner(self) -> List[LinkedState]:
-        current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
-
         block_pos = self.find_block_positions()
-        current_nodes = self.prune_unrelated_nodes(current_nodes)
-        possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
-
-        self.current_linked_state.branches_to_explore = possible_actions
+        self.domain_expansion(block_pos)
 
         shortest_num_steps = np.inf
 
@@ -126,12 +117,15 @@ class AcyclicPlanner:
             self.goal_linked_states.append(s_new_linked)
             print(f"Goal reached at state id {s_new_linked.state_id}!")
         else:
-            current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
-            current_nodes = self.prune_unrelated_nodes(current_nodes)
-            possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
-            self.current_linked_state.branches_to_explore = possible_actions
+            self.domain_expansion(block_pos)
 
         return self.current_linked_state
+
+    def domain_expansion(self, block_pos: List[str]):
+        current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
+        current_nodes = self.prune_unrelated_nodes(current_nodes)
+        possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
+        self.current_linked_state.branches_to_explore = possible_actions
 
     def is_branching_condition_met(self, s_new: State, action_name: str) -> bool:
         ancestor = self.current_linked_state.parent
@@ -163,6 +157,11 @@ class AcyclicPlanner:
         action_applicable = is_action_applicable(conds, action_params)
 
         return action_name, action_params, conds, effects, action_applicable
+
+    def find_block_positions(self) -> List[str]:
+        block_pos = [cast(Object, obj).at for obj in self.domain.things.get(Object, [])]
+        block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
+        return block_pos
 
     def unpack_actions_from_nodes(self, nodes: List[Node], block_pos: List[str]) -> List[Tuple[Node, str, Node]]:
         possible_actions = []
