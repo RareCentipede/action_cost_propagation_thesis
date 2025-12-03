@@ -1,11 +1,35 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Tuple, List, NewType, Dict, Union, Callable, Type, ClassVar, cast
 from copy import deepcopy
-
+    
 State = NewType('State', Dict[str, Any]) # {object_name}_{variable_name}: value
+Action = NewType('Action', Tuple[str, List[Any]]) # (action_name, [param1, param2, ...])
 SimpleCondition = NewType('SimpleCondition', Tuple[str, str, Any]) # (object_name, variable_name, value)
 ComputedCondition = Callable[..., bool]
 Condition = Union[SimpleCondition, ComputedCondition]
+
+state_state = Enum('StateState', 'ALIVE DEAD GOAL')
+
+@dataclass(eq=False)
+class LinkedState:
+    state_id: int
+    state: State
+    type_: state_state = state_state.ALIVE
+    parent: 'Tuple[Action, LinkedState] | None' = None # Parent state and the action connecting them. Only the root node has no parent
+    branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # home node, action name, target node
+    edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list) # action name, linked state
+
+    def __hash__(self):
+        return hash(self.state.__str__())
+
+    def __eq__(self, other):
+        if not isinstance(other, LinkedState):
+            return False
+        return self.state == other.state
+
+    def __str__(self):
+        return f"State {self.state_id} --> {[e[1].state_id for e in self.edges]}"
 
 @dataclass(eq=False)
 class Thing:
@@ -66,7 +90,7 @@ class Domain:
 
         return True
 
-    def update_state(self, new_state: State):
+    def update_state(self, new_state: State) -> None:
         self.states.append(new_state)
 
         for name, value_name in new_state.items():
@@ -78,6 +102,14 @@ class Domain:
                 if variable_name == 'supported':
                     continue
                 setattr(thing, variable_name, value)
+
+    def reset_state(self) -> None:
+        """
+            Remove the last state and update the state values according to the new last state.
+        """
+        self.states.pop(-1)
+        self.update_state(self.current_state)
+        self.states.pop(-1)
 
 @dataclass
 class Node:
@@ -111,7 +143,7 @@ def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thin
 
         current_val = getattr(param, variable_name, None)
         if current_val != target:
-            if verbose and variable_name == 'supported':
+            if verbose:
                 print(f"\nCondition failed: {param.name}_{variable_name}, current: {current_val}, target: {target}")
             return False
 

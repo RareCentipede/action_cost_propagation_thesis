@@ -1,6 +1,6 @@
 from typing import List, Dict, Tuple, cast
 from itertools import cycle
-from eas.EAS import Domain
+from eas.EAS import Action, Domain
 from eas.block_domain import Pose
 
 import pybullet as p
@@ -50,7 +50,7 @@ class CommandDispatcher:
                 self.entity_ids.append(entity_id)
                 self.object_entity_dict[obj_name] = entity_id
 
-    def run_simulation(self, commands: List[Tuple[str, List[str]]], duration: int = 0) -> None:
+    def run_simulation(self, commands: List[Tuple[str, List[str]]] | List[Action], duration: int = 0) -> None:
         for entity in self.entity_ids:
             pos, orn = p.getBasePositionAndOrientation(entity)
             print(self.objects[entity-1], pos, orn)
