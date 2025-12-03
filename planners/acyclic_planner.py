@@ -11,9 +11,10 @@ from typing import Tuple, Dict, cast, List
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
 
 class AcyclicPlanner:
-    def __init__(self, domain: Domain, dtg: Dict[str, Node]):
+    def __init__(self, domain: Domain, dtg: Dict[str, Node], verbosity: verbose_levels = verbose_levels.NONE):
         self.domain = domain
         self.dtg = dtg
+        self.verbosity = verbosity
 
         self.goal_nodes = create_goal_nodes(self.domain, self.dtg)
         self.current_state = self.domain.current_state
@@ -34,18 +35,20 @@ class AcyclicPlanner:
         block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
         return block_pos
 
-    def run_acyclic_planner(self, verbosity: verbose_levels = verbose_levels.NONE) -> List[LinkedState]:
+    def run_acyclic_planner(self) -> List[LinkedState]:
         current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
 
         block_pos = self.find_block_positions()
         current_nodes = self.prune_unrelated_nodes(current_nodes)
         possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
+
         self.current_linked_state.branches_to_explore = possible_actions
-        branching = True
 
         shortest_num_steps = np.inf
 
         while self.current_linked_state.branches_to_explore:
+            print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
+            branching = False
             block_pos = self.find_block_positions()
             current_state = self.current_linked_state.state
             branch = self.current_linked_state.branches_to_explore.pop(0)
@@ -56,29 +59,34 @@ class AcyclicPlanner:
                 action_args.append(param.name)
             action = Action((action_name, action_args))
 
+            self.log(action_name, branch, action_applicable)
+
             if action_applicable:
                 s_new = apply_action(current_state, conds, action_params, effects)
                 branching = self.is_branching_condition_met(s_new, action_name)
 
-                if branching:
-                    self.state_counter += 1
-                    self.steps += 1
-                    self.current_linked_state = self.branch_out(s_new, action, block_pos)
-                    if self.current_linked_state.type_ == state_state.GOAL:
-                        shortest_num_steps = min(self.steps, shortest_num_steps)
+            if branching:
+                self.state_counter += 1
+                self.steps += 1
+                self.current_linked_state = self.branch_out(s_new, action, block_pos)
+                if self.current_linked_state.type_ == state_state.GOAL:
+                    shortest_num_steps = min(self.steps, shortest_num_steps)
 
-            self.log(verbosity, action_name, branch, action_applicable)
+            if self.steps >= shortest_num_steps:
+                if self.verbosity != verbose_levels.NONE:
+                    print("Current path not better than current shortest path, go back to root.")
 
-            if self.steps > shortest_num_steps:
-                if verbosity != verbose_levels.NONE:
-                    print("Current path longer than shortest found path, backtracking.")
-                branching = self.backtrack(verbosity)
+                self.current_linked_state = self.s0
+                self.steps = 0
+                self.domain.update_state(self.current_linked_state.state)
+            elif (not self.current_linked_state.branches_to_explore):
+                if self.verbosity != verbose_levels.NONE:
+                    print("No branches to explore, backtracking.")
 
-            # Backtrack to somewhere with unexplored branches
-            branching = self.backtrack(verbosity)
+                self.backtrack()
 
-            if verbosity != verbose_levels.NONE:
-                print("-----------------------------------")
+            if self.verbosity != verbose_levels.NONE:
+                print("------------------------------------")
 
         return self.goal_linked_states
 
@@ -93,24 +101,19 @@ class AcyclicPlanner:
 
         return action_sequence
 
-    def backtrack(self, verbosity: verbose_levels) -> bool:
-        branching = True
-
+    def backtrack(self):
         while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == state_state.GOAL):
             if self.current_linked_state.parent is None:
                 print(f"Explored all branches from the root state. Total states explored: {self.state_counter}.")
-                branching = False
                 self.domain.update_state(self.current_linked_state.state)
                 break
 
-            if verbosity == verbose_levels.DEBUG:
+            if self.verbosity == verbose_levels.DEBUG:
                 print(f"Back track from {self.current_linked_state.state_id} to {self.current_linked_state.parent[1].state_id}")
 
             self.current_linked_state = self.current_linked_state.parent[1]
             self.domain.update_state(self.current_linked_state.state)
             self.steps -= 1
-
-        return branching
 
     def branch_out(self, s_new: State, action: Action, block_pos: List[str]) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
@@ -135,10 +138,12 @@ class AcyclicPlanner:
         if ancestor:
             ancestor = ancestor[1]
             if s_new == ancestor.state:
-                # print("New state is the same as an ancestor state, skipping to avoid cycle.")
+                if self.verbosity == verbose_levels.DEBUG:
+                    print("New state is the same as an ancestor state, skipping to avoid cycle.")
                 branching = False
             elif (action_name, self.current_linked_state) in ancestor.edges:
-                # print("This action from this state was already used to reach the parent state, skipping to avoid cycle.")
+                if self.verbosity == verbose_levels.DEBUG:
+                    print("Action leading to the new state has already been explored from an ancestor state, skipping to avoid cycle.")
                 branching = False
             else:
                 branching = True
@@ -194,10 +199,11 @@ class AcyclicPlanner:
 
         return nodes
 
-    def log(self, verbosity: verbose_levels, action_name: str, branch: Tuple[Node, str, Node], action_applicable: bool) -> None:
-        if verbosity == verbose_levels.TRACK:
+    def log(self, action_name: str, branch: Tuple[Node, str, Node], action_applicable: bool) -> None:
+        if self.verbosity == verbose_levels.TRACK:
             self.print_tree(self.s0, self.current_linked_state)
-        elif verbosity == verbose_levels.DEBUG:
+
+        elif self.verbosity == verbose_levels.DEBUG:
             print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
             print(f"Current state id: {self.current_linked_state.state_id}")
 
