@@ -4,7 +4,7 @@ from eas.block_domain import  domain, create_domain_transition_graph
 from dispatcher.dispatcher import CommandDispatcher
 
 def main():
-    config_name = "stacked"
+    config_name = "stack_2_stack_scrambled"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
@@ -15,9 +15,13 @@ def main():
 
     plan = ap.retrace_action_sequence_back_to_root()
 
-    cd = CommandDispatcher(block_domain)
-    cd.initialize_objects()
-    cd.run_simulation(plan)
+    if plan:
+        print("Plan found 😄")
+        cd = CommandDispatcher(block_domain)
+        cd.initialize_objects()
+        cd.run_simulation(plan)
+    else:
+        print("No plan found 😢")
 
 if __name__ == "__main__":
     main()
