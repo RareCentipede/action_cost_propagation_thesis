@@ -8,7 +8,7 @@ from eas.EAS import Action, apply_action, parse_action_params, is_action_applica
 from eas.EAS import State, Node, Domain, LinkedState, state_state, Condition
 from typing import Tuple, Dict, cast, List
 
-verbose_levels = Enum('VerboseLevel', 'NONE DEBUG INFO')
+verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
 
 class AcyclicPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node]):
@@ -21,6 +21,7 @@ class AcyclicPlanner:
         self.goal_positions = [g_node.values[-1].name for g_node in self.goal_nodes.values()]
 
         self.state_counter = 0
+        self.steps = 0
         self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter)
         self.current_linked_state = self.s0
         self.goal_linked_states = []
@@ -42,6 +43,8 @@ class AcyclicPlanner:
         self.current_linked_state.branches_to_explore = possible_actions
         branching = True
 
+        shortest_num_steps = np.inf
+
         while self.current_linked_state.branches_to_explore:
             block_pos = self.find_block_positions()
             current_state = self.current_linked_state.state
@@ -59,11 +62,17 @@ class AcyclicPlanner:
 
                 if branching:
                     self.state_counter += 1
+                    self.steps += 1
                     self.current_linked_state = self.branch_out(s_new, action, block_pos)
                     if self.current_linked_state.type_ == state_state.GOAL:
-                        break
+                        shortest_num_steps = min(self.steps, shortest_num_steps)
 
             self.log(verbosity, action_name, branch, action_applicable)
+
+            if self.steps > shortest_num_steps:
+                if verbosity != verbose_levels.NONE:
+                    print("Current path longer than shortest found path, backtracking.")
+                branching = self.backtrack(verbosity)
 
             # Backtrack to somewhere with unexplored branches
             branching = self.backtrack(verbosity)
@@ -89,7 +98,7 @@ class AcyclicPlanner:
 
         while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == state_state.GOAL):
             if self.current_linked_state.parent is None:
-                print("Explored all branches from the root state.")
+                print(f"Explored all branches from the root state. Total states explored: {self.state_counter}.")
                 branching = False
                 self.domain.update_state(self.current_linked_state.state)
                 break
@@ -99,6 +108,7 @@ class AcyclicPlanner:
 
             self.current_linked_state = self.current_linked_state.parent[1]
             self.domain.update_state(self.current_linked_state.state)
+            self.steps -= 1
 
         return branching
 
@@ -185,7 +195,7 @@ class AcyclicPlanner:
         return nodes
 
     def log(self, verbosity: verbose_levels, action_name: str, branch: Tuple[Node, str, Node], action_applicable: bool) -> None:
-        if verbosity == verbose_levels.INFO:
+        if verbosity == verbose_levels.TRACK:
             self.print_tree(self.s0, self.current_linked_state)
         elif verbosity == verbose_levels.DEBUG:
             print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
