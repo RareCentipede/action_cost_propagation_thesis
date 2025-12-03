@@ -27,7 +27,6 @@ class AcyclicPlanner:
 
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
-        self.robot_pos = self.robot.at.name
 
     def find_block_positions(self) -> List[str]:
         block_pos = [cast(Object, obj).at for obj in self.domain.things.get(Object, [])]
@@ -38,8 +37,8 @@ class AcyclicPlanner:
         current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
 
         block_pos = self.find_block_positions()
-        current_nodes = self.prune_unrelated_nodes(current_nodes, self.robot_pos)
-        possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos, self.robot_pos)
+        current_nodes = self.prune_unrelated_nodes(current_nodes)
+        possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
         self.current_linked_state.branches_to_explore = possible_actions
         branching = True
 
@@ -61,7 +60,7 @@ class AcyclicPlanner:
                     print(f"Applying action: {action_name} from {branch[0].name} to {branch[2].name}")
 
                 s_new = apply_action(current_state, conds, action_params, effects)
-                branching = self.is_branching_condition_met(self.current_linked_state.parent, self.current_linked_state, s_new, action_name)
+                branching = self.is_branching_condition_met(s_new, action_name)
 
                 if branching:
                     self.state_counter += 1
@@ -112,20 +111,19 @@ class AcyclicPlanner:
             print(f"Goal reached at state id {s_new_linked.state_id}!")
         else:
             current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
-            robot_pos = robot.at.name
-            current_nodes = self.prune_unrelated_nodes(current_nodes, robot_pos)
-            possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos, robot_pos)
+            current_nodes = self.prune_unrelated_nodes(current_nodes)
+            possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
             self.current_linked_state.branches_to_explore = possible_actions
 
         return self.current_linked_state
 
-    @staticmethod
-    def is_branching_condition_met(ancestor: LinkedState | None, current_linked_state: LinkedState, s_new: State, action_name: str) -> bool:
+    def is_branching_condition_met(self, s_new: State, action_name: str) -> bool:
+        ancestor = self.current_linked_state.parent
         if ancestor:
             if s_new == ancestor.state:
                 # print("New state is the same as an ancestor state, skipping to avoid cycle.")
                 branching = False
-            elif (action_name, current_linked_state) in ancestor.edges:
+            elif (action_name, self.current_linked_state) in ancestor.edges:
                 # print("This action from this state was already used to reach the parent state, skipping to avoid cycle.")
                 branching = False
             else:
@@ -147,7 +145,7 @@ class AcyclicPlanner:
 
         return action_name, action_params, conds, effects, action_applicable
 
-    def unpack_actions_from_nodes(self, nodes: List[Node], block_pos: List[str], robot_pos: str) -> List[Tuple[Node, str, Node]]:
+    def unpack_actions_from_nodes(self, nodes: List[Node], block_pos: List[str]) -> List[Tuple[Node, str, Node]]:
         possible_actions = []
 
         for node in nodes:
@@ -163,20 +161,21 @@ class AcyclicPlanner:
 
                 if base == 'robot' and (target_pos not in block_pos and target_pos not in self.goal_positions):
                     continue
-                elif base != 'robot' and ((target_pos == 'None' and base_pos != robot_pos) or (target_pos != 'None' and target_pos not in self.goal_positions)):
+                elif base != 'robot' and ((target_pos == 'None' and base_pos != self.robot.at.name) or \
+                    (target_pos != 'None' and target_pos not in self.goal_positions)):
                     continue
 
                 possible_actions.append((node, action_name, target_node))
 
         return possible_actions
 
-    def prune_unrelated_nodes(self, nodes: List[Node], robot_pos: str) -> List[Node]:
+    def prune_unrelated_nodes(self, nodes: List[Node]) -> List[Node]:
         for node in nodes:
             split_node_name = node.name.split('_')
             block = split_node_name[0]
             pos = split_node_name[-1]
 
-            if block != 'robot' and ((pos != robot_pos) and (pos != 'None') or block not in self.goal_blocks):
+            if block != 'robot' and ((pos != self.robot.at.name) and (pos != 'None') or block not in self.goal_blocks):
                 nodes.remove(node)
 
         return nodes
