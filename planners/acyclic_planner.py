@@ -1,10 +1,9 @@
 from collections import deque
-import time
 from enum import Enum
 import numpy as np
 
-from eas.block_domain import Pose, Robot, Object, domain, create_goal_nodes, create_domain_transition_graph
-from eas.EAS import Action, apply_action, parse_action_params, is_action_applicable, query_current_nodes, query_nodes
+from eas.block_domain import Pose, Robot, Object, create_goal_nodes
+from eas.EAS import Action, apply_action, parse_action_params, is_action_applicable, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, state_state, Condition
 from typing import Tuple, Dict, cast, List
 
@@ -29,7 +28,6 @@ class AcyclicPlanner:
 
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
-
 
     def run_acyclic_planner(self) -> List[LinkedState]:
         block_pos = self.find_block_positions()
