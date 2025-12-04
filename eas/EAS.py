@@ -181,7 +181,7 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
             continue
 
         if not parent:
-            raise ValueError(f"Parent {parent_name} for {ancestor.name if ancestor else 'unknown'} not found in parameters")
+            raise ValueError(f"Parent {parent_name} for {ancestor.name if ancestor else 'unknown'} not found in parameters when applying effect {effect.name}")
 
         state_key = f"{parent.name}_{variable_name}"
 

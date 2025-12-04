@@ -90,7 +90,7 @@ def initialize_states_and_domain(domain: Domain):
     init_state = State({})
     for thing_list in domain.things.values():
         for thing in thing_list:
-            print(thing.state)
+            print(thing.name, thing.state)
             init_state.update(thing.state)
 
     domain.states.append(init_state)
@@ -131,6 +131,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
 
                     if j == 0:
                         occupied_obj.on = cast(Ground, domain.name_things['GND'])
+                        print(f"Set {occupied_obj.name} on GND")
 
                     if type(above_obj) is Object:
                         occupied_obj.below = above_obj
@@ -140,6 +141,8 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
                 occupied_obj = pose.occupied_by
                 if isinstance(occupied_obj, Object):
                     occupied_obj.at_top = True
+                    occupied_obj.on = cast(Ground, domain.name_things['GND'])
+                    print(f"Set {occupied_obj.name} on GND")
 
         stacks.append([pose.name for pose in poses_in_stack])
 

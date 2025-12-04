@@ -9,6 +9,9 @@ from eas.EAS import Thing, State, Domain, Node, Condition, Effect, ConditionType
 class Ground(Thing):
     name: str = "GND"
 
+    def __str__(self):
+        return self.name
+
 @dataclass(eq=False)
 class Pose(Thing):
     pos: Tuple[float, float, float]
