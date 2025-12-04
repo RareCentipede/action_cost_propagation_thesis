@@ -5,17 +5,30 @@ from copy import deepcopy
     
 State = NewType('State', Dict[str, Any]) # {object_name}_{variable_name}: value
 Action = NewType('Action', Tuple[str, List[Any]]) # (action_name, [param1, param2, ...])
-SimpleCondition = NewType('SimpleCondition', Tuple[str, str, Any]) # (object_name, variable_name, value)
-ComputedCondition = Callable[..., bool]
-Condition = Union[SimpleCondition, ComputedCondition]
+ConditionType = Enum('ConditionType', 'SIMPLE COMPUTED')
+StateStatus = Enum('StateStatus', 'ALIVE DEAD GOAL')
 
-state_state = Enum('StateState', 'ALIVE DEAD GOAL')
+@dataclass
+class Effect:
+    name: str
+    src_name: str
+    var_name: str
+    target_value: Any
+
+@dataclass
+class Condition:
+    name: str
+    cond_tp: ConditionType
+    src_name: str
+    var_name: str
+    target_value: Any
+
 
 @dataclass(eq=False)
 class LinkedState:
     state_id: int
     state: State
-    type_: state_state = state_state.ALIVE
+    type_: StateStatus = StateStatus.ALIVE
     parent: 'Tuple[Action, LinkedState] | None' = None # Parent state and the action connecting them. Only the root node has no parent
     branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # home node, action name, target node
     edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list) # action name, linked state
@@ -120,31 +133,27 @@ class Node:
 
 def is_action_applicable(conditions: List[Condition], parameters: Dict[str, Thing], verbose: bool = False) -> bool:
     for cond in conditions:
-        if type(cond) is tuple:
-            cond = cast(SimpleCondition, cond)
-            parent_name, variable_name, target_name = cond
-            param = parameters.get(parent_name)
+        parent_name, variable_name, target_name = cond.src_name, cond.var_name, cond.target_value
+        param = parameters.get(parent_name)
 
-            if type(target_name) is str:
-                target = parameters.get(target_name)
-            else:
-                target = target_name
+        if type(target_name) is str:
+            target = parameters.get(target_name)
         else:
-            cond = cast(ComputedCondition, cond)
-            raise ValueError("ComputedCondition conditions are not supported in is_action_applicable yet, what did you do???")
+            target = target_name
 
         if not param:
             raise ValueError(f"Parameter {parent_name} not found in parameters")
 
-        current_val = getattr(param, variable_name, None)
+        current_val = getattr(param, variable_name)
+
         if current_val != target:
             if verbose:
-                print(f"\nCondition failed: {param.name}_{variable_name}, current: {current_val}, target: {target}")
+                print(f"\nCondition {cond.name} failed: {cond.src_name}_{cond.var_name} is {current_val}, expected {target}\n")
             return False
 
     return True
 
-def apply_action(state: State, conditions: List[Condition], parameters: Dict[str, Thing], effects: List[Condition]) -> State:
+def apply_action(state: State, conditions: List[Condition], parameters: Dict[str, Thing], effects: List[Effect]) -> State:
     new_state = deepcopy(state)
 
     action_applicable = is_action_applicable(conditions, parameters)
@@ -153,29 +162,26 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
         return State({})
 
     for effect in effects:
-        if type(effect) is tuple:
-            effect = cast(SimpleCondition, effect)
-            parent_name, variable_name, target_name = effect
+        parent_name, variable_name, target_name = effect.src_name, effect.var_name, effect.target_value
 
-            # In case of nested attributes like 'target_pose.occupied_by'
-            if '.' not in parent_name:
-                parent = parameters.get(parent_name)
-            else:
-                attrs = parent_name.split('.')
-                parent = parameters.get(attrs[0])
-
-                for attr in attrs[1:]:
-                    parent = getattr(parent, attr, None)
-
-            if not parent:
-                continue
-
+        # In case of nested attributes like 'target_pose.on.occupied_by'
+        if '.' not in parent_name:
+            parent = parameters.get(parent_name)
         else:
-            effect = cast(ComputedCondition, effect)
-            raise ValueError("ComputedCondition effects are not supported in apply_action yet, what did you do???")
+            attrs = parent_name.split('.')
+            ancestor = parameters.get(attrs[0])
+            parent = ancestor
+
+            for attr in attrs[1:]:
+                parent = getattr(parent, attr, None)
+                if parent and parent.name == 'GND':
+                    break
+
+        if parent and parent.name == 'GND':
+            continue
 
         if not parent:
-            raise ValueError(f"Parent {parent_name} not found in parameters")
+            raise ValueError(f"Parent {parent_name} for {ancestor.name if ancestor else 'unknown'} not found in parameters")
 
         state_key = f"{parent.name}_{variable_name}"
 
@@ -190,11 +196,9 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
                 for attr in attrs[1:]:
                     target = getattr(target, attr, None)
                     if target:
-                        if target.name == 'GND':
-                            target = 'GND'
-                            break
-
                         target = target.name
+                        if target == 'GND':
+                            break
         else:
             target = target_name
 
