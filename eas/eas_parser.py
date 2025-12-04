@@ -117,32 +117,39 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
         for j, pose in enumerate(poses_in_stack):
             if j == 0:
                 pose.on = domain.name_things['GND']
+                occupied_obj = pose.occupied_by
 
-            if j < len(poses_in_stack) - 1:
+                if type(occupied_obj) is Object:
+                    occupied_obj.on = cast(Ground, domain.name_things['GND'])
+                    print(f"Set {occupied_obj.name} on GND")
+
+            if j < len(poses_in_stack) - 1 and j > 0:
                 above_pose = poses_in_stack[j+1]
+                below_pose = poses_in_stack[j-1]
+
+                pose.on = below_pose
                 pose.below = above_pose
                 above_pose.on = pose
 
                 occupied_obj = pose.occupied_by
                 above_obj = above_pose.occupied_by
+                below_obj = below_pose.occupied_by
 
                 if type(occupied_obj) is Object:
                     occupied_obj.at_top = False
-
-                    if j == 0:
-                        occupied_obj.on = cast(Ground, domain.name_things['GND'])
-                        print(f"Set {occupied_obj.name} on GND")
 
                     if type(above_obj) is Object:
                         occupied_obj.below = above_obj
                         above_obj.on = occupied_obj
 
+                    if type(below_obj) is Object:
+                        occupied_obj.on = below_obj
+                        below_obj.below = occupied_obj
+
             elif j == len(poses_in_stack) - 1:
                 occupied_obj = pose.occupied_by
                 if isinstance(occupied_obj, Object):
                     occupied_obj.at_top = True
-                    occupied_obj.on = cast(Ground, domain.name_things['GND'])
-                    print(f"Set {occupied_obj.name} on GND")
 
         stacks.append([pose.name for pose in poses_in_stack])
 
