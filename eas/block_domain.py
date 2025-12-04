@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Tuple, List, Dict, cast
 
-from eas.EAS import Thing, State, SimpleCondition, Domain, Node, Condition
+from eas.EAS import Thing, State, SimpleCondition, ComputedCondition, Domain, Node, Condition
 
 @dataclass(eq=False)
 class Ground(Thing):
@@ -41,7 +41,7 @@ class Pose(Thing):
 class Object(Thing):
     at: Pose | None
     at_top: bool = True
-    on: 'Object | None | Ground' = None
+    on: 'Object | Ground | None' = None
     below: 'Object | None' = None
     variables = ("at", "at_top", "on", "below")
 
@@ -79,11 +79,11 @@ place_parameters = {'robot': Robot,
 place_conditions = [SimpleCondition(('robot', 'at', 'target_pose')),
                     SimpleCondition(('robot', 'holding', 'object')),
                     SimpleCondition(('target_pose', 'clear', True)),
-                    SimpleCondition(('target_pose', 'supported', True))]
+                    ComputedCondition(('target_pose', 'supported', True))]
 place_effects = [SimpleCondition(('robot', 'holding', None)),
                  SimpleCondition(('robot', 'gripper_empty', True)),
                  SimpleCondition(('object', 'at', 'target_pose')),
-                 SimpleCondition(('object', 'on', 'target_pose.occupied_by')),
+                 SimpleCondition(('object', 'on', 'target_pose.on.occupied_by')),
                  SimpleCondition(('target_pose', 'occupied_by', 'object')),
                  SimpleCondition(('target_pose', 'clear', False)),
                  SimpleCondition(('target_pose.on.occupied_by', 'at_top', False)),

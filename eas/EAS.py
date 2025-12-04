@@ -72,11 +72,6 @@ class Domain:
                              List[Condition]]] = field(default_factory=dict)
     name_things: Dict[str, Thing] = field(default_factory=dict)
 
-    def map_name_to_things(self):
-        for things in self.things.values():
-            for thing in things:
-                self.name_things[thing.name] = thing
-
     @property
     def current_state(self) -> State:
         return self.states[-1] if self.states else State({})
@@ -172,7 +167,7 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
                 for attr in attrs[1:]:
                     parent = getattr(parent, attr, None)
 
-            if not parent or (parent.name == 'GND'):
+            if not parent:
                 continue
 
         else:
@@ -194,6 +189,12 @@ def apply_action(state: State, conditions: List[Condition], parameters: Dict[str
 
                 for attr in attrs[1:]:
                     target = getattr(target, attr, None)
+                    if target:
+                        if target.name == 'GND':
+                            target = 'GND'
+                            break
+
+                        target = target.name
         else:
             target = target_name
 

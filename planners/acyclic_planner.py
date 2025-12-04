@@ -1,6 +1,7 @@
+import numpy as np
+
 from collections import deque
 from enum import Enum
-import numpy as np
 
 from eas.block_domain import Pose, Robot, Object, create_goal_nodes
 from eas.EAS import Action, apply_action, parse_action_params, is_action_applicable, query_nodes
@@ -36,7 +37,7 @@ class AcyclicPlanner:
         shortest_num_steps = np.inf
 
         while self.current_linked_state.branches_to_explore:
-            print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
+            # print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
             branching = False
             block_pos = self.find_block_positions()
             current_state = self.current_linked_state.state

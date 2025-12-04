@@ -8,6 +8,10 @@ from eas.EAS import Domain, State
 from eas.block_domain import Robot, Pose, Object, Ground    
 
 def parse_configs(domain: Domain, config_name: str, problem_config_path: str = "config/problem_configs/") -> Domain:
+    gnd = Ground()
+    domain.things.setdefault(Ground, []).append(gnd)
+    domain.name_things[gnd.name] = gnd
+
     init_config, goal_config = load_configs_to_dict(config_name, problem_config_path)
     define_init_objects_and_poses(init_config, domain)
     define_goal_objects_and_poses(goal_config, domain)
@@ -90,7 +94,6 @@ def initialize_states_and_domain(domain: Domain):
             init_state.update(thing.state)
 
     domain.states.append(init_state)
-    # domain.map_name_to_things()
 
 def build_physical_relations(domain: Domain) -> List[List[str]]:
     visited_positions = []
@@ -113,7 +116,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
 
         for j, pose in enumerate(poses_in_stack):
             if j == 0:
-                pose.on = Ground()
+                pose.on = domain.name_things['GND']
 
             if j < len(poses_in_stack) - 1:
                 above_pose = poses_in_stack[j+1]
@@ -127,7 +130,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
                     occupied_obj.at_top = False
 
                     if j == 0:
-                        occupied_obj.on = Ground()
+                        occupied_obj.on = cast(Ground, domain.name_things['GND'])
 
                     if type(above_obj) is Object:
                         occupied_obj.below = above_obj
