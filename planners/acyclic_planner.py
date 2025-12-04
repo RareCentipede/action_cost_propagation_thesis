@@ -4,8 +4,8 @@ from collections import deque
 from enum import Enum
 
 from eas.block_domain import Pose, Robot, Object, create_goal_nodes
-from eas.EAS import Action, apply_action, parse_action_params, is_action_applicable, query_nodes
-from eas.EAS import State, Node, Domain, LinkedState, state_state, Condition
+from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_nodes
+from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
 from typing import Tuple, Dict, cast, List
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
@@ -59,7 +59,7 @@ class AcyclicPlanner:
                 self.state_counter += 1
                 self.steps += 1
                 self.current_linked_state = self.branch_out(s_new, action, block_pos)
-                if self.current_linked_state.type_ == state_state.GOAL:
+                if self.current_linked_state.type_ == StateStatus.GOAL:
                     shortest_num_steps = min(self.steps, shortest_num_steps)
 
             if self.steps >= shortest_num_steps:
@@ -92,7 +92,7 @@ class AcyclicPlanner:
         return action_sequence
 
     def backtrack(self):
-        while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == state_state.GOAL):
+        while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == StateStatus.GOAL):
             if self.current_linked_state.parent is None:
                 print(f"Explored all branches from the root state. Total states explored: {self.state_counter}.")
                 self.domain.update_state(self.current_linked_state.state)
@@ -112,7 +112,7 @@ class AcyclicPlanner:
         self.domain.update_state(s_new)
         self.current_linked_state = s_new_linked
         if self.domain.goal_reached:
-            self.current_linked_state.type_ = state_state.GOAL
+            self.current_linked_state.type_ = StateStatus.GOAL
             self.goal_linked_states.append(s_new_linked)
             print(f"Goal reached at state id {s_new_linked.state_id}!")
         else:
@@ -145,7 +145,7 @@ class AcyclicPlanner:
 
         return branching
 
-    def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Condition], bool]:
+    def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
         action_params = parse_action_params(action_name, node, target_node)
 
@@ -226,11 +226,11 @@ class AcyclicPlanner:
             seen.add(node.state_id)
 
             node_mark = " <== current" if current is not None and node is current else ""
-            node_status = "" if node.type_ == state_state.ALIVE else f" [{node.type_.name}]"
+            node_status = "" if node.type_ == StateStatus.ALIVE else f" [{node.type_.name}]"
             print(f"S{node.state_id}{node_status}{node_mark}")
 
             for action, child in node.edges:
                 child_mark = " <== current" if current is not None and child is current else ""
-                child_status = "" if child.type_ == state_state.ALIVE else f" [{child.type_.name}]"
+                child_status = "" if child.type_ == StateStatus.ALIVE else f" [{child.type_.name}]"
                 print(f"  └─[{action}]→ S{child.state_id}{child_status}{child_mark}")
                 q.append(child)

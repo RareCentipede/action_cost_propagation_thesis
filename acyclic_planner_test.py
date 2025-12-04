@@ -11,7 +11,7 @@ def main():
     block_domain = parse_configs(domain, config_name, problem_config_path)
     dtg = create_domain_transition_graph(block_domain)
 
-    ap = AcyclicPlanner(block_domain, dtg, verbose_levels.NONE)
+    ap = AcyclicPlanner(block_domain, dtg, verbose_levels.TRACK)
     ap.run_acyclic_planner()
 
     plan = ap.retrace_action_sequence_back_to_root()
