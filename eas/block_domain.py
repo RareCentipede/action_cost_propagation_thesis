@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import Tuple, List, Dict, cast
 
-from eas.EAS import Thing, State, SimpleCondition, ComputedCondition, Domain, Node, Condition
+from eas.EAS import Thing, State, Domain, Node, Condition, Effect, ConditionType
 
 @dataclass(eq=False)
 class Ground(Thing):
@@ -22,7 +22,7 @@ class Pose(Thing):
 
     @property
     def supported(self) -> bool:
-        if self.on == 'GND':
+        if self.on == Ground() or self.on == 'GND':
             return True
 
         pose_below = cast(Pose, self.on) # Poses are never on a NonePose. Either ground or another valid pose.
@@ -55,39 +55,40 @@ class Robot(Thing):
 move_parameters = {'robot': Robot,
                    'start_pose': Pose,
                    'target_pose': Pose}
-move_conditions = [SimpleCondition(('robot', 'at', 'start_pose'))]
-move_effects = [SimpleCondition(('robot', 'at', 'target_pose'))]
+move_conditions = [Condition('robot_at_start', ConditionType.SIMPLE, 'robot', 'at', 'start_pose')]
+move_effects = [Effect('robot_at_target', 'robot', 'at', 'target_pose')]
 
 pick_parameters = {'robot': Robot,
                    'object': Object,
                    'object_pose': Pose}
-pick_conditions = [SimpleCondition(('robot', 'at', 'object_pose')),
-                   SimpleCondition(('robot', 'gripper_empty', True)),
-                   SimpleCondition(('object', 'at', 'object_pose')),
-                   SimpleCondition(('object', 'at_top', True))]
-pick_effects = [SimpleCondition(('robot', 'holding', 'object')),
-                SimpleCondition(('robot', 'gripper_empty', False)),
-                SimpleCondition(('object', 'at', None)),
-                SimpleCondition(('object_pose', 'occupied_by', None)),
-                SimpleCondition(('object_pose', 'clear', True)),
-                SimpleCondition(('object.on', 'at_top', True)),
-                SimpleCondition(('object.on', 'below', None)),
-                SimpleCondition(('object', 'on', None)),]
+pick_conditions = [Condition('robot_at_object_pose', ConditionType.SIMPLE, 'robot', 'at', 'object_pose'),
+                   Condition('robot_gripper_empty', ConditionType.SIMPLE, 'robot', 'gripper_empty', True),
+                   Condition('object_at_object_pose', ConditionType.SIMPLE, 'object', 'at', 'object_pose'),
+                   Condition('object_at_top', ConditionType.SIMPLE, 'object', 'at_top', True)]
+pick_effects = [Effect('robot_holding_object', 'robot', 'holding', 'object'),
+                Effect('robot_gripper_empty_false', 'robot', 'gripper_empty', False),
+                Effect('object_at_none', 'object', 'at', None),
+                Effect('object_pose_occupied_by_none', 'object_pose', 'occupied_by', None),
+                Effect('object_pose_clear_true', 'object_pose', 'clear', True),
+                Effect('object_on_at_top_true', 'object.on', 'at_top', True),
+                Effect('object_on_below_none', 'object.on', 'below', None),
+                Effect('object_on_none', 'object', 'on', None)]
+
 place_parameters = {'robot': Robot,
                     'object': Object,
                     'target_pose': Pose}
-place_conditions = [SimpleCondition(('robot', 'at', 'target_pose')),
-                    SimpleCondition(('robot', 'holding', 'object')),
-                    SimpleCondition(('target_pose', 'clear', True)),
-                    ComputedCondition(('target_pose', 'supported', True))]
-place_effects = [SimpleCondition(('robot', 'holding', None)),
-                 SimpleCondition(('robot', 'gripper_empty', True)),
-                 SimpleCondition(('object', 'at', 'target_pose')),
-                 SimpleCondition(('object', 'on', 'target_pose.on.occupied_by')),
-                 SimpleCondition(('target_pose', 'occupied_by', 'object')),
-                 SimpleCondition(('target_pose', 'clear', False)),
-                 SimpleCondition(('target_pose.on.occupied_by', 'at_top', False)),
-                 SimpleCondition(('target_pose.on.occupied_by', 'below', 'object'))]
+place_conditions = [Condition('robot_at_target_pose', ConditionType.SIMPLE, 'robot', 'at', 'target_pose'),
+                    Condition('robot_holding_object', ConditionType.SIMPLE, 'robot', 'holding', 'object'),
+                    Condition('target_pose_clear', ConditionType.SIMPLE, 'target_pose', 'clear', True),
+                    Condition('target_pose_supported', ConditionType.COMPUTED, 'target_pose', 'supported', True)]
+place_effects = [Effect('robot_holding_none', 'robot', 'holding', None),
+                 Effect('robot_gripper_empty_true', 'robot', 'gripper_empty', True),
+                 Effect('object_at_target_pose', 'object', 'at', 'target_pose'),
+                 Effect('object_on_target_pose_occupied_by', 'object', 'on', 'target_pose.on.occupied_by'),
+                 Effect('target_pose_occupied_by_object', 'target_pose', 'occupied_by', 'object'),
+                 Effect('target_pose_clear_false', 'target_pose', 'clear', False),
+                 Effect('target_pose_on_occupied_by_at_top_false', 'target_pose.on.occupied_by', 'at_top', False),
+                 Effect('target_pose_on_occupied_by_below_object', 'target_pose.on.occupied_by', 'below', 'object')]
 
 move_conditions = cast(List[Condition], move_conditions)
 move_effects = cast(List[Condition], move_effects)
