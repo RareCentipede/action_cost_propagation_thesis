@@ -178,6 +178,7 @@ class AcyclicPlanner:
 
                 if base == 'robot' and (target_pos not in block_pos and target_pos not in self.goal_positions):
                     continue
+                # Things break if this condition is commented out
                 elif base != 'robot' and ((target_pos == 'None' and base_pos != self.robot.at.name) or \
                     (target_pos != 'None' and target_pos not in self.goal_positions)):
                     continue
