@@ -11,16 +11,19 @@ def main():
     block_domain = parse_configs(domain, config_name, problem_config_path)
     dtg = create_domain_transition_graph(block_domain)
 
-    ap = AcyclicPlanner(block_domain, dtg, verbose_levels.INFO)
+    ap = AcyclicPlanner(block_domain, dtg, verbose_levels.NONE)
     ap.run_acyclic_planner()
 
-    plan = ap.retrace_action_sequence_back_to_root()
+    plans = ap.retrace_action_sequence_back_to_root()
 
-    if plan:
+    if plans:
         print(f"Plan found 😄! Total number of goal states: {len(ap.goal_linked_states)}")
-        # cd = CommandDispatcher(block_domain)
-        # cd.initialize_objects()
-        # cd.run_simulation(plan)
+        for i, plan in enumerate(plans):
+            print(f"Plan {i}: {len(plan)} steps")
+        cd = CommandDispatcher(block_domain)
+        cd.initialize_objects()
+        plan = plans[2]
+        cd.run_simulation(plan)
     else:
         print("No plan found 😢")
 

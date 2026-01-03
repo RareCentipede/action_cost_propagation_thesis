@@ -36,7 +36,7 @@ class AcyclicPlanner:
 
         shortest_num_steps = np.inf
 
-        while self.current_linked_state.branches_to_explore:
+        while self.current_linked_state.branches_to_explore and len(self.goal_linked_states) <= 5:
             # print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
             branching = False
             block_pos = self.find_block_positions()
@@ -64,11 +64,13 @@ class AcyclicPlanner:
 
             if self.steps >= shortest_num_steps:
                 if self.verbosity != verbose_levels.NONE:
-                    print("Current path not better than current shortest path, go back to root.")
+                    print("Current path not better than current shortest path, backtracking.")
 
-                self.current_linked_state = self.s0
-                self.steps = 0
-                self.domain.update_state(self.current_linked_state.state)
+                self.backtrack()
+
+                # self.current_linked_state = self.s0
+                # self.steps = 0
+                # self.domain.update_state(self.current_linked_state.state)
             elif (not self.current_linked_state.branches_to_explore):
                 if self.verbosity != verbose_levels.NONE:
                     print("No branches to explore, backtracking.")
@@ -80,16 +82,19 @@ class AcyclicPlanner:
 
         return self.goal_linked_states
 
-    def retrace_action_sequence_back_to_root(self) -> List[Action]:
+    def retrace_action_sequence_back_to_root(self) -> List[List[Action]]:
         action_sequence = []
+        action_sequences = []
 
         for state in self.goal_linked_states:
             while state.parent is not None:
                 action = state.parent[0]
                 action_sequence.insert(0, action)
                 state = state.parent[1]
+            action_sequences.append(action_sequence)
+            action_sequence = []
 
-        return action_sequence
+        return action_sequences
 
     def backtrack(self):
         while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == StateStatus.GOAL):
@@ -114,7 +119,8 @@ class AcyclicPlanner:
         if self.domain.goal_reached:
             self.current_linked_state.type_ = StateStatus.GOAL
             self.goal_linked_states.append(s_new_linked)
-            print(f"Goal reached at state id {s_new_linked.state_id}!")
+            print(f"Goal reached at state id {s_new_linked.state_id}!, total goal states found: {len(self.goal_linked_states)}",
+                  f"steps taken: {self.steps}, num goal blocks: {len(self.goal_blocks)}")
         else:
             self.domain_expansion(block_pos)
 
