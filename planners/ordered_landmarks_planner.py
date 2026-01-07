@@ -36,7 +36,7 @@ class OrderedLandmarksPlanner:
 
         shortest_num_steps = np.inf
 
-        while self.current_linked_state.branches_to_explore and not self.domain.goal_reached:
+        while self.current_linked_state.branches_to_explore:
             # print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
             block_pos = self.find_block_positions()
             current_state = self.current_linked_state.state
@@ -58,6 +58,7 @@ class OrderedLandmarksPlanner:
             self.state_counter += 1
             self.steps += 1
             self.current_linked_state = self.branch_out(s_new, action, block_pos)
+
             if self.current_linked_state.type_ == StateStatus.GOAL:
                 shortest_num_steps = min(self.steps, shortest_num_steps)
 
@@ -67,9 +68,6 @@ class OrderedLandmarksPlanner:
 
                 self.backtrack()
 
-                # self.current_linked_state = self.s0
-                # self.steps = 0
-                # self.domain.update_state(self.current_linked_state.state)
             elif (not self.current_linked_state.branches_to_explore):
                 if self.verbosity != verbose_levels.NONE:
                     print("No branches to explore, backtracking.")
@@ -100,6 +98,7 @@ class OrderedLandmarksPlanner:
             if self.current_linked_state.parent is None:
                 print(f"Explored all branches from the root state. Total states explored: {self.state_counter}.")
                 self.domain.update_state(self.current_linked_state.state)
+                print(self.domain.current_state)
                 break
 
             if self.verbosity == verbose_levels.DEBUG:
@@ -131,25 +130,6 @@ class OrderedLandmarksPlanner:
         possible_actions = self.find_preferred_action(block_pos, current_nodes)
 
         self.current_linked_state.branches_to_explore = [possible_actions]
-
-    def is_branching_condition_met(self, s_new: State, action_name: str) -> bool:
-        ancestor = self.current_linked_state.parent
-        if ancestor:
-            ancestor = ancestor[1]
-            if s_new == ancestor.state:
-                if self.verbosity == verbose_levels.DEBUG:
-                    print("New state is the same as an ancestor state, skipping to avoid cycle.")
-                branching = False
-            elif (action_name, self.current_linked_state) in ancestor.edges:
-                if self.verbosity == verbose_levels.DEBUG:
-                    print("Action leading to the new state has already been explored from an ancestor state, skipping to avoid cycle.")
-                branching = False
-            else:
-                branching = True
-        else:
-            branching = True
-
-        return branching
 
     def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
