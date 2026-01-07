@@ -46,6 +46,7 @@ class Object(Thing):
     at_top: bool = True
     on: 'Object | Ground | None' = None
     below: 'Object | None' = None
+    goal: 'Pose | None' = None
     variables = ("at", "at_top", "on", "below")
 
 @dataclass(eq=False)
@@ -124,11 +125,13 @@ def create_nodes(domain: Domain) -> Tuple[Dict[str, Node], Dict[str, Node]]:
     if robots:
         robot = robots[0]
 
-    for pose in domain.things.get(Pose, []):
+    poses = domain.things.get(Pose, [])
+    blocks = domain.things.get(Object, [])
+    for pose in poses:
         node_name = f"{robot.name}_at_{pose.name}"
         robot_dtg[node_name] = Node(name=node_name, values=(robot, pose))
 
-        for block in domain.things.get(Object, []):
+        for block in blocks:
             node_name = f"{block.name}_at_{pose.name}"
             block_dtg[node_name] = Node(name=node_name, values=(robot, block, pose))
             none_node_name = f"{block.name}_at_None"

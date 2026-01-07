@@ -4,7 +4,7 @@ from collections import deque
 from enum import Enum
 
 from eas.block_domain import Pose, Robot, Object, create_goal_nodes
-from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_nodes
+from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_available_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
 from typing import Tuple, Dict, cast, List
 
@@ -36,9 +36,8 @@ class OrderedLandmarksPlanner:
 
         shortest_num_steps = np.inf
 
-        while self.current_linked_state.branches_to_explore and len(self.goal_linked_states) <= 5:
+        while self.current_linked_state.branches_to_explore and not self.domain.goal_reached:
             # print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
-            branching = False
             block_pos = self.find_block_positions()
             current_state = self.current_linked_state.state
             branch = self.current_linked_state.branches_to_explore.pop(0)
@@ -51,16 +50,16 @@ class OrderedLandmarksPlanner:
 
             self.log(action_name, branch, action_applicable)
 
-            if action_applicable:
-                s_new = apply_action(current_state, conds, action_params, effects)
-                branching = self.is_branching_condition_met(s_new, action_name)
+            if not action_applicable:
+                print(f"Action [{action_name}] not applicable, skipping.")
+                continue
 
-            if branching:
-                self.state_counter += 1
-                self.steps += 1
-                self.current_linked_state = self.branch_out(s_new, action, block_pos)
-                if self.current_linked_state.type_ == StateStatus.GOAL:
-                    shortest_num_steps = min(self.steps, shortest_num_steps)
+            s_new = apply_action(current_state, conds, action_params, effects)
+            self.state_counter += 1
+            self.steps += 1
+            self.current_linked_state = self.branch_out(s_new, action, block_pos)
+            if self.current_linked_state.type_ == StateStatus.GOAL:
+                shortest_num_steps = min(self.steps, shortest_num_steps)
 
             if self.steps >= shortest_num_steps:
                 if self.verbosity != verbose_levels.NONE:
@@ -127,10 +126,11 @@ class OrderedLandmarksPlanner:
         return self.current_linked_state
 
     def domain_expansion(self, block_pos: List[str]):
-        current_nodes = query_nodes(self.dtg, self.current_linked_state.state)
+        current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
         current_nodes = self.prune_unrelated_nodes(current_nodes)
-        possible_actions = self.unpack_actions_from_nodes(current_nodes, block_pos)
-        self.current_linked_state.branches_to_explore = possible_actions
+        possible_actions = self.find_preferred_action(block_pos, current_nodes)
+
+        self.current_linked_state.branches_to_explore = [possible_actions]
 
     def is_branching_condition_met(self, s_new: State, action_name: str) -> bool:
         ancestor = self.current_linked_state.parent
@@ -168,41 +168,101 @@ class OrderedLandmarksPlanner:
         block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
         return block_pos
 
-    def unpack_actions_from_nodes(self, nodes: List[Node], block_pos: List[str]) -> List[Tuple[Node, str, Node]]:
-        possible_actions = []
+    def find_preferred_action(self, block_pos: List[str], nodes: List[Node]) -> Tuple[Node, str, Node]:
+        """
+            Find the the best action to take based on the current state and goal nodes.
+        """
+        robot_pos = self.robot.at.name
+        if robot_pos in block_pos and self.robot.gripper_empty and block_pos not in self.goal_positions:
+            action = 'pick'
+        elif robot_pos in self.goal_positions and not self.robot.gripper_empty:
+            action = 'place'
+        else:
+            action = 'move'
 
-        for node in nodes:
-            for edge in node.edges:
-                action_name, target_node = edge
+        match action:
+            case 'pick':
+                pos = self.domain.name_things.get(robot_pos)
+                pos = cast(Pose, pos)
 
-                split_base_node_name = node.name.split('_')
-                split_target_node_name = target_node.name.split('_')
-                base = split_base_node_name[0]
-                base_pos = split_base_node_name[-1]
+                block_to_pick = pos.occupied_by
+                block_to_pick = cast(Object, block_to_pick)
 
-                target_pos = split_target_node_name[-1]
+                node_name = f"{block_to_pick.name}_at_{robot_pos}"                
+                home_node = self.dtg.get(node_name)
+                home_node = cast(Node, home_node)
 
-                if base == 'robot' and (target_pos not in block_pos and target_pos not in self.goal_positions):
-                    continue
-                # Things break if this condition is commented out
-                elif base != 'robot' and ((target_pos == 'None' and base_pos != self.robot.at.name) or \
-                    (target_pos != 'None' and target_pos not in self.goal_positions)):
-                    continue
+                target_node_name = f"{block_to_pick.name}_at_None"
+                target_node = self.dtg.get(target_node_name)
+                target_node = cast(Node, target_node)
 
-                possible_actions.append((node, action_name, target_node))
+            case 'place':
+                block_to_place = self.robot.holding
+                block_to_place = cast(Object, block_to_place)
+                goal_pose = block_to_place.goal
+                goal_pose = cast(Pose, goal_pose)
 
-        return possible_actions
+                home_node_name = f"{block_to_place.name}_at_None"
+                home_node = self.dtg.get(home_node_name)
+                home_node = cast(Node, home_node)
+
+                target_node_name = f"{block_to_place.name}_at_{goal_pose.name}"
+                target_node = self.dtg.get(target_node_name)
+                target_node = cast(Node, target_node)
+
+            case 'move':
+                if self.robot.gripper_empty:
+                    poses = [node.values[2] for node in nodes if node.name.startswith('block')]
+                    positions = [pose.pos for pose in poses]
+
+                    robot_position = self.robot.at.pos
+                    dists_to_poses = np.linalg.norm(np.array(positions) - np.array(robot_position), axis=1)
+                    closest_pose_idx = np.argmin(dists_to_poses)
+                    closest_pose = poses[closest_pose_idx]
+
+                    target_node_name = f"robot_at_{closest_pose.name}"
+                    target_node = self.dtg.get(target_node_name)
+                    target_node = cast(Node, target_node)
+                else:
+                    obj_in_hand = self.robot.holding
+                    obj_in_hand = cast(Object, obj_in_hand)
+                    goal_pose = obj_in_hand.goal
+                    goal_pose = cast(Pose, goal_pose)
+
+                    target_node_name = f"robot_at_{goal_pose.name}"
+                    target_node = self.dtg.get(target_node_name)
+                    target_node = cast(Node, target_node)
+
+                home_node_name = f"robot_at_{self.robot.at.name}"
+                home_node = self.dtg.get(home_node_name)
+                home_node = cast(Node, home_node)
+
+            case _:
+                raise ValueError(f"Unknown action: {action}")
+
+        return (home_node, action, target_node)
 
     def prune_unrelated_nodes(self, nodes: List[Node]) -> List[Node]:
+        """
+            Node is unrelated if:
+                - It is a block node whose
+                    - not related to the goal or
+                    - it is already at its goal position
+        """
+        related_nodes = []
+
         for node in nodes:
             split_node_name = node.name.split('_')
-            block = split_node_name[0]
+            obj = split_node_name[0]
             pos = split_node_name[-1]
 
-            if block != 'robot' and ((pos != self.robot.at.name) and (pos != 'None') or block not in self.goal_blocks):
-                nodes.remove(node)
+            if obj != 'robot':
+                if obj not in self.goal_blocks or pos in self.goal_positions:
+                    continue
 
-        return nodes
+            related_nodes.append(node)
+
+        return related_nodes
 
     def log(self, action_name: str, branch: Tuple[Node, str, Node], action_applicable: bool) -> None:
         if self.verbosity == verbose_levels.TRACK:

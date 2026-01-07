@@ -66,6 +66,10 @@ def define_goal_objects_and_poses(goal_config: Dict, domain: Domain):
         poses = domain.things.get(Pose, [])
         poses = cast(List[Pose], poses)
         pose = find_pose_from_position(pos, poses)
+
+        goal_obj = domain.name_things.get(obj_name, None)
+        goal_obj = cast(Object, goal_obj)
+        goal_obj.goal = pose
         goal_state.update({f"{obj_name}_at": pose.name})
 
         if pose not in poses:

@@ -50,6 +50,7 @@ class Thing:
     # variables describe which attributes compose the state for this Thing.
     # They are class-level and should not be part of the dataclass init/fields.
     variables: ClassVar[Tuple[str, ...]] = ()
+
     @property
     def state(self) -> State:
         state = State({})
@@ -242,6 +243,31 @@ def query_nodes(dtg: Dict[str, Node], state: State) -> List[Node]:
         node = dtg.get(dtg_key, None)
         if node:
             nodes.append(node)
+    return nodes
+
+def query_available_nodes(dtg: Dict[str, Node], state: State) -> List[Node]:
+    """
+        Return a list of available nodes in the DTG based on the given state.
+
+        A node is available if:
+            - It exists in the DTG
+            - It is not a goal node -> handled outside this function
+            - The object can be picked or placed at the goal pose
+                - Pick: Object is at top
+                - Place: Pose is clear and supported -> enforce later
+    """
+
+    nodes = []
+    for var, val in state.items():
+        dtg_key = f"{var}_{val}"
+        node = dtg.get(dtg_key, None)
+        obj_name = var.rsplit('_', 1)[0]
+        at_top = state.get(f'{obj_name}_at_top', None)
+
+        if not node or (not at_top and obj_name != 'robot'):
+            continue
+
+        nodes.append(node)
     return nodes
 
 def query_current_nodes(dtg: Dict[str, Node], current_state: State, goal_nodes: Dict[str, Node]) -> List[Node]:
