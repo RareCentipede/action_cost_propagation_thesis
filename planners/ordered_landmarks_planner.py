@@ -216,7 +216,7 @@ class OrderedLandmarksPlanner:
                 target_node = cast(Node, target_node)
 
             case 'move':
-                target_node = self.find_next_move_node(robot_pos, nodes)
+                target_node = self.find_next_move_node(nodes)
 
                 home_node_name = f"robot_at_{self.robot.at.name}"
                 home_node = self.dtg.get(home_node_name)
@@ -227,7 +227,7 @@ class OrderedLandmarksPlanner:
 
         return home_node, target_node
 
-    def find_next_move_node(self, robot_pos: str, nodes: List[Node]) -> Node:
+    def find_next_move_node(self, nodes: List[Node]) -> Node:
         if self.robot.gripper_empty:
             poses = [node.values[2] for node in nodes if node.name.startswith('block')]
             positions = [pose.pos for pose in poses]
