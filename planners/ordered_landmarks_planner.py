@@ -31,53 +31,154 @@ class OrderedLandmarksPlanner:
         self.robot = cast(Robot, robot)
 
     def run_ordered_landmarks_planner(self) -> List[LinkedState]:
-        block_pos = self.find_block_positions()
-        self.domain_expansion(block_pos)
-
+        goal_linked_states = []
         shortest_num_steps = np.inf
 
-        while self.current_linked_state.branches_to_explore:
-            # print(f"{len(self.current_linked_state.branches_to_explore)} branches to explore from state {self.current_linked_state.state_id}.")
-            block_pos = self.find_block_positions()
-            current_state = self.current_linked_state.state
-            branch = self.current_linked_state.branches_to_explore.pop(0)
+        self.current_linked_state = self.branch_out(self.find_block_positions(), self.current_linked_state)
 
-            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(branch)
-            action_args = []
-            for param in action_params.values():
-                action_args.append(param.name)
-            action = Action((action_name, action_args))
+        # Define branches at current state
+        # Evalute the branches if there is more than one
+        # Assign the costs to the edges
+        # Choose the lowest cost edge to expand next
 
-            self.log(action_name, branch, action_applicable)
+        # Can potentially have multiple queues for multiple heuristics
+
+        return goal_linked_states
+
+    def branch_out(self, block_pos: List[str], current_linked_state: LinkedState) -> LinkedState:
+        """
+            Find useful branches to explore from the current state. Return the updated linked state with branches to explore.
+        """
+        current_nodes = query_available_nodes(self.dtg, current_linked_state.state)
+        current_nodes = self.prune_unrelated_nodes(current_nodes)
+        preferred_action = self.find_preferred_action(block_pos, current_nodes)
+
+        match preferred_action:
+            case 'pick':
+                home_node, target_node = self.define_pick_branch(self.robot.at.name)
+                branches = [(home_node, preferred_action, target_node)]
+            case 'place':
+                home_node, target_node = self.define_place_branch()
+                branches = [(home_node, preferred_action, target_node)]
+            case 'move':
+                home_node = self.dtg.get(f"robot_at_{self.robot.at.name}")
+                home_node = cast(Node, home_node)
+
+                branches = []
+                target_nodes = self.define_move_branches(current_nodes)
+                for target_node in target_nodes:
+                    branches.append((home_node, preferred_action, target_node))
+            case _:
+                raise ValueError(f"Unknown action: {preferred_action}")
+
+        weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
+        current_linked_state.branches_to_explore = weighted_branches
+
+        return current_linked_state
+
+    def define_pick_branch(self, robot_pos: str) -> Tuple[Node, Node]:
+        pos = self.domain.name_things.get(robot_pos)
+        pos = cast(Pose, pos)
+
+        block_to_pick = pos.occupied_by
+        block_to_pick = cast(Object, block_to_pick)
+
+        node_name = f"{block_to_pick.name}_at_{robot_pos}"                
+        home_node = self.dtg.get(node_name)
+        home_node = cast(Node, home_node)
+
+        target_node_name = f"{block_to_pick.name}_at_None"
+        target_node = self.dtg.get(target_node_name)
+        target_node = cast(Node, target_node)
+
+        return home_node, target_node
+
+    def define_place_branch(self) -> Tuple[Node, Node]:
+        block_to_place = self.robot.holding
+        block_to_place = cast(Object, block_to_place)
+        goal_pose = block_to_place.goal
+        goal_pose = cast(Pose, goal_pose)
+
+        home_node_name = f"{block_to_place.name}_at_None"
+        home_node = self.dtg.get(home_node_name)
+        home_node = cast(Node, home_node)
+
+        target_node_name = f"{block_to_place.name}_at_{goal_pose.name}"
+        target_node = self.dtg.get(target_node_name)
+        target_node = cast(Node, target_node)
+
+        return home_node, target_node
+
+    def define_move_branches(self, nodes: List[Node]) -> List[Node]:
+        """
+            If gripper emptry, many choices for movement. If gripper already holding an object, only move
+            to its goal position.
+        """
+        target_nodes = []
+
+        if self.robot.gripper_empty:
+            poses = [node.values[2] for node in nodes if node.name.startswith('block')]
+            positions = [pose.pos for pose in poses]
+
+            robot_position = self.robot.at.pos
+            dists_to_poses = np.linalg.norm(np.array(positions) - np.array(robot_position), axis=1)
+            closest_pose_idx = np.argmin(dists_to_poses)
+            closest_pose = poses[closest_pose_idx]
+
+            for pose in poses:
+                if pose.name in self.goal_positions:
+                    continue
+
+                target_node_name = f"robot_at_{closest_pose.name}"
+                target_node = self.dtg.get(target_node_name)
+                target_node = cast(Node, target_node)
+                target_nodes.append(target_node)
+        else:
+            obj_in_hand = self.robot.holding
+            obj_in_hand = cast(Object, obj_in_hand)
+            goal_pose = obj_in_hand.goal
+            goal_pose = cast(Pose, goal_pose)
+
+            target_node_name = f"robot_at_{goal_pose.name}"
+            target_node = self.dtg.get(target_node_name)
+            target_node = cast(Node, target_node)
+            target_nodes.append(target_node)
+
+        return target_nodes
+
+    def evaluate_branches(self, branches: List[Tuple[Node, str, Node]], heuristic: str = 'greedy') -> List[Tuple[Node, str, Node, float]]:
+        """
+            Evaluate the given branches and assign costs to each branch.
+            Return a list of branches with their associated costs.
+        """
+        evaluated_branches = []
+
+        if len(branches) == 1:
+            branch = branches[0]
+            branch = (*branch, 0.0)
+            return [branch]
+
+        for branch in branches:
+            node, action_name, target_node = branch
+            action_params = parse_action_params(action_name, node, target_node)
+
+            action_tuple = self.domain.actions.get(action_name)
+            action_tuple = cast(Tuple, action_tuple)
+            _, conds, _ = action_tuple
+
+            action_applicable = is_action_applicable(conds, action_params)
 
             if not action_applicable:
-                print(f"Action [{action_name}] not applicable, skipping.")
                 continue
 
-            s_new = apply_action(current_state, conds, action_params, effects)
-            self.state_counter += 1
-            self.steps += 1
-            self.current_linked_state = self.branch_out(s_new, action, block_pos)
+            if heuristic == 'greedy':
+                current_pos = self.robot.at.pos
+                target_pos = target_node.values[-1].pos
+                cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
 
-            if self.current_linked_state.type_ == StateStatus.GOAL:
-                shortest_num_steps = min(self.steps, shortest_num_steps)
+            evaluated_branches.append((node, action_name, target_node, cost))
 
-            if self.steps >= shortest_num_steps:
-                if self.verbosity != verbose_levels.NONE:
-                    print("Current path not better than current shortest path, backtracking.")
-
-                self.backtrack()
-
-            elif (not self.current_linked_state.branches_to_explore):
-                if self.verbosity != verbose_levels.NONE:
-                    print("No branches to explore, backtracking.")
-
-                self.backtrack()
-
-            if self.verbosity != verbose_levels.NONE:
-                print("------------------------------------")
-
-        return self.goal_linked_states
+        return evaluated_branches
 
     def retrace_action_sequence_back_to_root(self) -> List[List[Action]]:
         action_sequence = []
@@ -108,9 +209,9 @@ class OrderedLandmarksPlanner:
             self.domain.update_state(self.current_linked_state.state)
             self.steps -= 1
 
-    def branch_out(self, s_new: State, action: Action, block_pos: List[str]) -> LinkedState:
+    def expand_state(self, s_new: State, action: Action, block_pos: List[str]) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
-        self.current_linked_state.edges.append((action[0], s_new_linked))
+        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, 0.0))
 
         self.domain.update_state(s_new)
         self.current_linked_state = s_new_linked
@@ -127,9 +228,13 @@ class OrderedLandmarksPlanner:
     def domain_expansion(self, block_pos: List[str]):
         current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
         current_nodes = self.prune_unrelated_nodes(current_nodes)
-        possible_actions = self.find_preferred_action(block_pos, current_nodes)
 
-        self.current_linked_state.branches_to_explore = [possible_actions]
+        preferred_action = self.find_preferred_action(block_pos, current_nodes)
+        action = self.find_home_and_target_nodes(self.robot.at.name, preferred_action, current_nodes)
+        possible_actions = [(action[0], preferred_action, action[1])]
+        weighted_actions = self.evaluate_branches(possible_actions, heuristic='greedy')
+
+        self.current_linked_state.branches_to_explore = weighted_actions
 
     def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
@@ -148,7 +253,7 @@ class OrderedLandmarksPlanner:
         block_pos = [cast(Pose, pos).name for pos in block_pos if pos is not None]
         return block_pos
 
-    def find_preferred_action(self, block_pos: List[str], nodes: List[Node]) -> Tuple[Node, str, Node]:
+    def find_preferred_action(self, block_pos: List[str], nodes: List[Node]) -> str:
         """
             Find the the best action to take based on the current state and goal nodes.
         """
@@ -160,9 +265,7 @@ class OrderedLandmarksPlanner:
         else:
             action = 'move'
 
-        home_node, target_node = self.find_home_and_target_nodes(robot_pos, action, nodes)
-
-        return (home_node, action, target_node)
+        return action
 
     def find_home_and_target_nodes(self, robot_pos: str, action: str, nodes: List[Node]) -> Tuple[Node, Node]:
         match action:
@@ -286,7 +389,7 @@ class OrderedLandmarksPlanner:
             node_status = "" if node.type_ == StateStatus.ALIVE else f" [{node.type_.name}]"
             print(f"S{node.state_id}{node_status}{node_mark}")
 
-            for action, child in node.edges:
+            for action, child, _ in node.weighted_edges:
                 child_mark = " <== current" if current is not None and child is current else ""
                 child_status = "" if child.type_ == StateStatus.ALIVE else f" [{child.type_.name}]"
                 print(f"  └─[{action}]→ S{child.state_id}{child_status}{child_mark}")

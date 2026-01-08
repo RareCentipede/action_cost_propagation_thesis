@@ -30,8 +30,7 @@ class LinkedState:
     state: State
     type_: StateStatus = StateStatus.ALIVE
     parent: 'Tuple[Action, LinkedState] | None' = None # Parent state and the action connecting them. Only the root node has no parent
-    branches_to_explore: List[Tuple['Node', str, 'Node']] = field(default_factory=list)  # home node, action name, target node
-    edges: List[Tuple[str, 'LinkedState']] = field(default_factory=list) # action name, linked state
+    branches_to_explore: List[Tuple['Node', str, 'Node', float]] = field(default_factory=list)  # home node, action name, target node
     weighted_edges: List[Tuple[str, 'LinkedState', float]] = field(default_factory=list) # action name, linked state, cost
 
     def __hash__(self):
@@ -43,7 +42,7 @@ class LinkedState:
         return self.state == other.state
 
     def __str__(self):
-        return f"State {self.state_id} --> {[e[1].state_id for e in self.edges]}"
+        return f"State {self.state_id} --> {[e[1].state_id for e in self.weighted_edges]}"
 
 @dataclass(eq=False)
 class Thing:
