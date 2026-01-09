@@ -5,7 +5,7 @@ from eas.block_domain import  Object, domain, create_domain_transition_graph
 from dispatcher.dispatcher import CommandDispatcher
 
 def main():
-    config_name = "stacked"
+    config_name = "basic"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)

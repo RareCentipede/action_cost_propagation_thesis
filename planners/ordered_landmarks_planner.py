@@ -34,21 +34,22 @@ class OrderedLandmarksPlanner:
         goal_linked_states = []
         shortest_num_steps = np.inf
 
-        # Define branches at current state
-        branches = self.branch_out(self.find_block_positions(), self.current_linked_state)
+        while not self.domain.goal_reached:
+            # Define branches at current state
+            branches = self.branch_out(self.find_block_positions(), self.current_linked_state)
 
-        # Evalute the branches and assign costs
-        weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
-        self.current_linked_state.branches_to_explore = weighted_branches
-        # Choose the lowest cost edge to expand next
-        while self.current_linked_state.branches_to_explore or not self.domain.goal_reached:
+            # Evalute the branches and assign costs
+            weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
+            self.current_linked_state.branches_to_explore = weighted_branches
             current_state = self.current_linked_state.state
+
+            # Choose the lowest cost edge to expand next
             selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
 
             action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
             action_args = []
             for param in action_params.values():
-                action_args.append(param)
+                action_args.append(param.name)
             action = Action((action_name, action_args))
 
             self.log(action_name, selected_branch, action_applicable)
@@ -60,7 +61,7 @@ class OrderedLandmarksPlanner:
             s_new = apply_action(current_state, conds, action_params, effects)
             self.state_counter += 1
             self.steps += 1
-            self.current_linked_state = self.expand_state(s_new, action, self.find_block_positions())
+            self.current_linked_state = self.expand_state(s_new, action)
 
             if self.domain.goal_reached:
                 goal_linked_states.append(self.current_linked_state)
@@ -199,7 +200,7 @@ class OrderedLandmarksPlanner:
                 target_pos = target_node.values[-1].pos
                 cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
 
-                target_obj = target_node.values[-1].pose.occupied_by
+                target_obj = target_node.values[-1].occupied_by
                 target_obj = cast(Object, target_obj)
                 target_obj_goal = target_obj.goal
                 target_obj_goal = cast(Pose, target_obj_goal)
@@ -210,6 +211,20 @@ class OrderedLandmarksPlanner:
             evaluated_branches.append((node, action_name, target_node, cost))
 
         return evaluated_branches
+
+    def expand_state(self, s_new: State, action: Action) -> LinkedState:
+        s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
+        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, 0.0))
+
+        self.domain.update_state(s_new)
+        self.current_linked_state = s_new_linked
+        if self.domain.goal_reached:
+            self.current_linked_state.type_ = StateStatus.GOAL
+            self.goal_linked_states.append(s_new_linked)
+            print(f"Goal reached at state id {s_new_linked.state_id}!, total goal states found: {len(self.goal_linked_states)}",
+                  f"steps taken: {self.steps}, num goal blocks: {len(self.goal_blocks)}")
+
+        return self.current_linked_state
 
     def retrace_action_sequence_back_to_root(self) -> List[List[Action]]:
         action_sequence = []
@@ -240,21 +255,6 @@ class OrderedLandmarksPlanner:
             self.domain.update_state(self.current_linked_state.state)
             self.steps -= 1
 
-    def expand_state(self, s_new: State, action: Action, block_pos: List[str]) -> LinkedState:
-        s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
-        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, 0.0))
-
-        self.domain.update_state(s_new)
-        self.current_linked_state = s_new_linked
-        if self.domain.goal_reached:
-            self.current_linked_state.type_ = StateStatus.GOAL
-            self.goal_linked_states.append(s_new_linked)
-            print(f"Goal reached at state id {s_new_linked.state_id}!, total goal states found: {len(self.goal_linked_states)}",
-                  f"steps taken: {self.steps}, num goal blocks: {len(self.goal_blocks)}")
-        else:
-            self.domain_expansion(block_pos)
-
-        return self.current_linked_state
 
     def domain_expansion(self, block_pos: List[str]):
         current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
@@ -289,7 +289,7 @@ class OrderedLandmarksPlanner:
             Find the the best action to take based on the current state and goal nodes.
         """
         robot_pos = self.robot.at.name
-        if robot_pos in block_pos and self.robot.gripper_empty and block_pos not in self.goal_positions:
+        if robot_pos in block_pos and self.robot.gripper_empty and robot_pos not in self.goal_positions:
             action = 'pick'
         elif robot_pos in self.goal_positions and not self.robot.gripper_empty:
             action = 'place'
