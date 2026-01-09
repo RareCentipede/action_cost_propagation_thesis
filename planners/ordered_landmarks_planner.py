@@ -142,18 +142,12 @@ class OrderedLandmarksPlanner:
 
         if self.robot.gripper_empty:
             poses = [node.values[2] for node in nodes if node.name.startswith('block')]
-            positions = [pose.pos for pose in poses]
-
-            robot_position = self.robot.at.pos
-            dists_to_poses = np.linalg.norm(np.array(positions) - np.array(robot_position), axis=1)
-            closest_pose_idx = np.argmin(dists_to_poses)
-            closest_pose = poses[closest_pose_idx]
 
             for pose in poses:
                 if pose.name in self.goal_positions:
                     continue
 
-                target_node_name = f"robot_at_{closest_pose.name}"
+                target_node_name = f"robot_at_{pose.name}"
                 target_node = self.dtg.get(target_node_name)
                 target_node = cast(Node, target_node)
                 target_nodes.append(target_node)
@@ -255,18 +249,6 @@ class OrderedLandmarksPlanner:
             self.domain.update_state(self.current_linked_state.state)
             self.steps -= 1
 
-
-    def domain_expansion(self, block_pos: List[str]):
-        current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
-        current_nodes = self.prune_unrelated_nodes(current_nodes)
-
-        preferred_action = self.find_preferred_action(block_pos, current_nodes)
-        action = self.find_home_and_target_nodes(self.robot.at.name, preferred_action, current_nodes)
-        possible_actions = [(action[0], preferred_action, action[1])]
-        weighted_actions = self.evaluate_branches(possible_actions, heuristic='greedy')
-
-        self.current_linked_state.branches_to_explore = weighted_actions
-
     def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
         action_params = parse_action_params(action_name, node, target_node)
@@ -297,74 +279,6 @@ class OrderedLandmarksPlanner:
             action = 'move'
 
         return action
-
-    def find_home_and_target_nodes(self, robot_pos: str, action: str, nodes: List[Node]) -> Tuple[Node, Node]:
-        match action:
-            case 'pick':
-                pos = self.domain.name_things.get(robot_pos)
-                pos = cast(Pose, pos)
-
-                block_to_pick = pos.occupied_by
-                block_to_pick = cast(Object, block_to_pick)
-
-                node_name = f"{block_to_pick.name}_at_{robot_pos}"                
-                home_node = self.dtg.get(node_name)
-                home_node = cast(Node, home_node)
-
-                target_node_name = f"{block_to_pick.name}_at_None"
-                target_node = self.dtg.get(target_node_name)
-                target_node = cast(Node, target_node)
-
-            case 'place':
-                block_to_place = self.robot.holding
-                block_to_place = cast(Object, block_to_place)
-                goal_pose = block_to_place.goal
-                goal_pose = cast(Pose, goal_pose)
-
-                home_node_name = f"{block_to_place.name}_at_None"
-                home_node = self.dtg.get(home_node_name)
-                home_node = cast(Node, home_node)
-
-                target_node_name = f"{block_to_place.name}_at_{goal_pose.name}"
-                target_node = self.dtg.get(target_node_name)
-                target_node = cast(Node, target_node)
-
-            case 'move':
-                target_node = self.find_next_move_node(nodes)
-
-                home_node_name = f"robot_at_{self.robot.at.name}"
-                home_node = self.dtg.get(home_node_name)
-                home_node = cast(Node, home_node)
-
-            case _:
-                raise ValueError(f"Unknown action: {action}")
-
-        return home_node, target_node
-
-    def find_next_move_node(self, nodes: List[Node]) -> Node:
-        if self.robot.gripper_empty:
-            poses = [node.values[2] for node in nodes if node.name.startswith('block')]
-            positions = [pose.pos for pose in poses]
-
-            robot_position = self.robot.at.pos
-            dists_to_poses = np.linalg.norm(np.array(positions) - np.array(robot_position), axis=1)
-            closest_pose_idx = np.argmin(dists_to_poses)
-            closest_pose = poses[closest_pose_idx]
-
-            target_node_name = f"robot_at_{closest_pose.name}"
-            target_node = self.dtg.get(target_node_name)
-            target_node = cast(Node, target_node)
-        else:
-            obj_in_hand = self.robot.holding
-            obj_in_hand = cast(Object, obj_in_hand)
-            goal_pose = obj_in_hand.goal
-            goal_pose = cast(Pose, goal_pose)
-
-            target_node_name = f"robot_at_{goal_pose.name}"
-            target_node = self.dtg.get(target_node_name)
-            target_node = cast(Node, target_node)
-
-        return target_node
 
     def prune_unrelated_nodes(self, nodes: List[Node]) -> List[Node]:
         """
