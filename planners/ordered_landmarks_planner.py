@@ -34,18 +34,44 @@ class OrderedLandmarksPlanner:
         goal_linked_states = []
         shortest_num_steps = np.inf
 
-        self.current_linked_state = self.branch_out(self.find_block_positions(), self.current_linked_state)
-
         # Define branches at current state
-        # Evalute the branches if there is more than one
-        # Assign the costs to the edges
+        branches = self.branch_out(self.find_block_positions(), self.current_linked_state)
+
+        # Evalute the branches and assign costs
+        weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
+        self.current_linked_state.branches_to_explore = weighted_branches
         # Choose the lowest cost edge to expand next
+        while self.current_linked_state.branches_to_explore or not self.domain.goal_reached:
+            current_state = self.current_linked_state.state
+            selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
+
+            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
+            action_args = []
+            for param in action_params.values():
+                action_args.append(param)
+            action = Action((action_name, action_args))
+
+            self.log(action_name, selected_branch, action_applicable)
+
+            if not action_applicable:
+                print(f"Action [{action_name}] not applicable, skipping.")
+                continue
+
+            s_new = apply_action(current_state, conds, action_params, effects)
+            self.state_counter += 1
+            self.steps += 1
+            self.current_linked_state = self.expand_state(s_new, action, self.find_block_positions())
+
+            if self.domain.goal_reached:
+                goal_linked_states.append(self.current_linked_state)
+                if self.steps < shortest_num_steps:
+                    shortest_num_steps = self.steps
 
         # Can potentially have multiple queues for multiple heuristics
 
         return goal_linked_states
 
-    def branch_out(self, block_pos: List[str], current_linked_state: LinkedState) -> LinkedState:
+    def branch_out(self, block_pos: List[str], current_linked_state: LinkedState) -> List[Tuple[Node, str, Node]]:
         """
             Find useful branches to explore from the current state. Return the updated linked state with branches to explore.
         """
@@ -71,10 +97,7 @@ class OrderedLandmarksPlanner:
             case _:
                 raise ValueError(f"Unknown action: {preferred_action}")
 
-        weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
-        current_linked_state.branches_to_explore = weighted_branches
-
-        return current_linked_state
+        return branches
 
     def define_pick_branch(self, robot_pos: str) -> Tuple[Node, Node]:
         pos = self.domain.name_things.get(robot_pos)
@@ -111,7 +134,7 @@ class OrderedLandmarksPlanner:
 
     def define_move_branches(self, nodes: List[Node]) -> List[Node]:
         """
-            If gripper emptry, many choices for movement. If gripper already holding an object, only move
+            If gripper empty, many choices for movement. If gripper already holding an object, only move
             to its goal position.
         """
         target_nodes = []
@@ -175,6 +198,14 @@ class OrderedLandmarksPlanner:
                 current_pos = self.robot.at.pos
                 target_pos = target_node.values[-1].pos
                 cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
+
+                target_obj = target_node.values[-1].pose.occupied_by
+                target_obj = cast(Object, target_obj)
+                target_obj_goal = target_obj.goal
+                target_obj_goal = cast(Pose, target_obj_goal)
+
+                goal_pos = target_obj_goal.pos
+                cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
 
             evaluated_branches.append((node, action_name, target_node, cost))
 
