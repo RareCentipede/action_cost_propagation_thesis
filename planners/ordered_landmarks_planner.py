@@ -37,7 +37,9 @@ class OrderedLandmarksPlanner:
 
         while not self.domain.goal_reached:
             # Define branches at current state
-            branches = self.branch_out(self.find_block_positions(), self.current_linked_state)
+            current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
+            current_nodes = self.prune_unrelated_nodes(current_nodes)
+            branches = self.branch_out(self.find_block_positions(), current_nodes)
 
             # Evalute the branches and assign costs
             weighted_branches = self.evaluate_branches(branches)
@@ -73,12 +75,10 @@ class OrderedLandmarksPlanner:
 
         return goal_linked_states
 
-    def branch_out(self, block_pos: List[str], current_linked_state: LinkedState) -> List[Tuple[Node, str, Node]]:
+    def branch_out(self, block_pos: List[str], current_nodes: List[Node]) -> List[Tuple[Node, str, Node]]:
         """
             Find useful branches to explore from the current state. Return the updated linked state with branches to explore.
         """
-        current_nodes = query_available_nodes(self.dtg, current_linked_state.state)
-        current_nodes = self.prune_unrelated_nodes(current_nodes)
         preferred_action = self.find_preferred_action(block_pos, current_nodes)
 
         match preferred_action:
