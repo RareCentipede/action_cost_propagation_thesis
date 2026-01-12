@@ -37,6 +37,8 @@ class OrderedLandmarksPlanner:
         goal_nodes = [node for node in self.goal_nodes.values()]
         define_neighbor_preferences(block_nodes, goal_nodes)
 
+
+
         return self.run_ordered_landmarks_planner()
 
     def run_ordered_landmarks_planner(self) -> List[LinkedState]:
@@ -232,6 +234,7 @@ class OrderedLandmarksPlanner:
 
         ranked_neighbors = target_node.values[1].ranked_neighbors
 
+        # This is the actual heuristic calculation
         # First sum up greedy costs for the current target
         current_cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
         cost += current_cost
@@ -247,7 +250,6 @@ class OrderedLandmarksPlanner:
             neighbor_obj = cast(Object, neighbor_obj)
             neighbor_pose = neighbor_obj.at
             neighbor_pose = cast(Pose, neighbor_pose)
-            neighbor_pos = neighbor_pose.pos
 
             neighbor_node_name = f"{neighbor_obj.name}_at_{neighbor_pose.name}"
             neighbor_node = self.dtg.get(neighbor_node_name)
@@ -263,6 +265,9 @@ class OrderedLandmarksPlanner:
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             target_node = neighbor_node
+
+            # From here we can expand the states following the neighbor chain
+            # Then we choose the minimum cost among all chains as the heuristic
 
         return cost
 
