@@ -9,6 +9,7 @@ from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
 from typing import Tuple, Dict, cast, List
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
+heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY')
 
 class OrderedLandmarksPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node], verbosity: verbose_levels = verbose_levels.NONE):
@@ -39,7 +40,7 @@ class OrderedLandmarksPlanner:
             branches = self.branch_out(self.find_block_positions(), self.current_linked_state)
 
             # Evalute the branches and assign costs
-            weighted_branches = self.evaluate_branches(branches, heuristic='greedy')
+            weighted_branches = self.evaluate_branches(branches)
             self.current_linked_state.branches_to_explore = weighted_branches
             current_state = self.current_linked_state.state
 
@@ -164,7 +165,7 @@ class OrderedLandmarksPlanner:
 
         return target_nodes
 
-    def evaluate_branches(self, branches: List[Tuple[Node, str, Node]], heuristic: str = 'greedy') -> List[Tuple[Node, str, Node, float]]:
+    def evaluate_branches(self, branches: List[Tuple[Node, str, Node]], heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> List[Tuple[Node, str, Node, float]]:
         """
             Evaluate the given branches and assign costs to each branch.
             Return a list of branches with their associated costs.
@@ -189,22 +190,30 @@ class OrderedLandmarksPlanner:
             if not action_applicable:
                 continue
 
-            if heuristic == 'greedy':
-                current_pos = self.robot.at.pos
-                target_pos = target_node.values[-1].pos
-                cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
-
-                target_obj = target_node.values[-1].occupied_by
-                target_obj = cast(Object, target_obj)
-                target_obj_goal = target_obj.goal
-                target_obj_goal = cast(Pose, target_obj_goal)
-
-                goal_pos = target_obj_goal.pos
-                cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+            match heuristic:
+                case heuristic_types.LAZY_GREEDY:
+                    cost = self.lazy_greedy_heuristic(target_node)
+                case _:
+                    cost = 0.0
 
             evaluated_branches.append((node, action_name, target_node, cost))
 
         return evaluated_branches
+
+    def lazy_greedy_heuristic(self, target_node: Node) -> float:
+        current_pos = self.robot.at.pos
+        target_pos = target_node.values[-1].pos
+        cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
+
+        target_obj = target_node.values[-1].occupied_by
+        target_obj = cast(Object, target_obj)
+        target_obj_goal = target_obj.goal
+        target_obj_goal = cast(Pose, target_obj_goal)
+
+        goal_pos = target_obj_goal.pos
+        cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+
+        return cost.item()
 
     def expand_state(self, s_new: State, action: Action) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))
