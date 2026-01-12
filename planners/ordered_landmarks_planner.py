@@ -3,13 +3,13 @@ import numpy as np
 from collections import deque
 from enum import Enum
 
-from eas.block_domain import Pose, Robot, Object, create_goal_nodes
+from eas.block_domain import Pose, Robot, Object, create_goal_nodes, define_neighbor_preferences
 from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_available_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
 from typing import Tuple, Dict, cast, List
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
-heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY')
+heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY GREEDY_NEIGHBOR')
 
 class OrderedLandmarksPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node], verbosity: verbose_levels = verbose_levels.NONE):
@@ -31,15 +31,23 @@ class OrderedLandmarksPlanner:
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
+    def run_ordered_landmarks_planner_with_preferred_neighbors(self) -> List[LinkedState]:
+        nodes = query_nodes(self.dtg, self.domain.current_state)
+        block_nodes = [node for node in nodes if not node.name.startswith('robot')]
+        goal_nodes = [node for node in self.goal_nodes.values()]
+        define_neighbor_preferences(block_nodes, goal_nodes)
+
+        return self.run_ordered_landmarks_planner()
+
     def run_ordered_landmarks_planner(self) -> List[LinkedState]:
         goal_linked_states = []
         shortest_num_steps = np.inf
 
         while not self.domain.goal_reached:
             # Define branches at current state
-            current_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
-            current_nodes = self.prune_unrelated_nodes(current_nodes)
-            branches = self.branch_out(self.find_block_positions(), current_nodes)
+            available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
+            available_nodes = self.prune_unrelated_nodes(available_nodes)
+            branches = self.branch_out(self.find_block_positions(), available_nodes)
 
             # Evalute the branches and assign costs
             weighted_branches = self.evaluate_branches(branches)
@@ -192,7 +200,9 @@ class OrderedLandmarksPlanner:
 
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
-                    cost = self.lazy_greedy_heuristic(target_node)
+                    cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
+                case heuristic_types.GREEDY_NEIGHBOR:
+                    cost = self.greedy_neighbor_heuristic(target_node)
                 case _:
                     cost = 0.0
 
@@ -200,8 +210,7 @@ class OrderedLandmarksPlanner:
 
         return evaluated_branches
 
-    def lazy_greedy_heuristic(self, target_node: Node) -> float:
-        current_pos = self.robot.at.pos
+    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node) -> float:
         target_pos = target_node.values[-1].pos
         cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
 
@@ -214,6 +223,48 @@ class OrderedLandmarksPlanner:
         cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
 
         return cost.item()
+
+    def greedy_neighbor_heuristic(self, target_node: Node) -> float:
+        cost = 0.0
+        visited_node_count = 0
+        nodes_to_visit = len(self.goal_blocks)
+        visited_neighbors = []
+
+        ranked_neighbors = target_node.values[1].ranked_neighbors
+
+        # First sum up greedy costs for the current target
+        current_cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
+        cost += current_cost
+        visited_node_count += 1
+
+        while visited_node_count < nodes_to_visit:
+            for neighbor_name in ranked_neighbors:
+                if neighbor_name not in self.goal_blocks and neighbor_name not in visited_neighbors:
+                    visited_neighbors.append(neighbor_name)
+                    break
+
+            neighbor_obj = self.domain.name_things.get(neighbor_name)
+            neighbor_obj = cast(Object, neighbor_obj)
+            neighbor_pose = neighbor_obj.at
+            neighbor_pose = cast(Pose, neighbor_pose)
+            neighbor_pos = neighbor_pose.pos
+
+            neighbor_node_name = f"{neighbor_obj.name}_at_{neighbor_pose.name}"
+            neighbor_node = self.dtg.get(neighbor_node_name)
+            neighbor_node = cast(Node, neighbor_node)
+
+            target_goal = target_node.values[1].goal
+            target_goal = cast(Pose, target_goal)
+            target_goal_pos = target_goal.pos
+
+            # Add distance between target's goal and neighbor to cost
+            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node)
+            visited_node_count += 1
+
+            # Set neighbor as the new target and keep adding costs until all goal blocks are visited
+            target_node = neighbor_node
+
+        return cost
 
     def expand_state(self, s_new: State, action: Action) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state))

@@ -23,7 +23,6 @@ class Condition:
     var_name: str
     target_value: Any
 
-
 @dataclass(eq=False)
 class LinkedState:
     state_id: int

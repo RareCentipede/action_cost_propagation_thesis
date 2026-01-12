@@ -2,6 +2,7 @@ import numpy as np
 
 from dataclasses import dataclass, field
 from typing import Tuple, List, Dict, cast
+from scipy.spatial import KDTree
 
 from eas.EAS import Thing, State, Domain, Node, Condition, Effect, ConditionType
 
@@ -47,6 +48,8 @@ class Object(Thing):
     on: 'Object | Ground | None' = None
     below: 'Object | None' = None
     goal: 'Pose | None' = None
+    ranked_neighbors: List[str] = field(default_factory=list)
+    propagated_cost: float = 0.0
     variables = ("at", "at_top", "on", "below")
 
 @dataclass(eq=False)
@@ -184,3 +187,17 @@ def create_goal_nodes(domain: Domain, dtg: Dict[str, Node]) -> Dict[str, Node]:
             goal_nodes[dtg_key] = goal_node
 
     return goal_nodes
+
+def define_neighbor_preferences(block_nodes: List[Node], goal_nodes: List[Node]) -> None:
+    for goal_node in goal_nodes:
+        goal_pos = goal_node.values[-1].pos
+
+        unique_block_nodes = [node for node in block_nodes if node.values[1].name != goal_node.values[1].name]
+        block_positions = [node.values[-1].pos for node in unique_block_nodes]
+        dists_from_goal = np.linalg.norm(np.array(block_positions) - np.array(goal_pos), axis=1)
+        p_costs = [node.values[1].propagated_cost for node in unique_block_nodes]
+        total_costs = dists_from_goal + np.array(p_costs)
+
+        sorted_neighbors_indices = np.argsort(total_costs)
+        ranked_neighbors = [unique_block_nodes[i].values[1].name for i in sorted_neighbors_indices]
+        goal_node.values[1].ranked_neighbors = ranked_neighbors
