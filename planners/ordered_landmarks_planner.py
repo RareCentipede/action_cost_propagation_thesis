@@ -32,11 +32,9 @@ class OrderedLandmarksPlanner:
         self.robot = cast(Robot, robot)
 
     def run_ordered_landmarks_planner_with_preferred_neighbors(self) -> List[LinkedState]:
-        """
-            Assume monotone problems where no block needs to be moved more than once.
-            Use preferred neighbor information to guide the search.
-        """
-        branches = [[]]
+        goal_linked_states = []
+        shortest_num_steps = np.inf
+
         nodes = query_available_nodes(self.dtg, self.domain.current_state)
         nodes = self.prune_unrelated_nodes(nodes)
 
@@ -44,134 +42,45 @@ class OrderedLandmarksPlanner:
         goal_nodes = [node for node in self.goal_nodes.values()]
         define_neighbor_preferences(block_nodes, goal_nodes)
 
-        nodes_to_visit = len(self.goal_blocks)
-        visited_node_count = 0
-        visited_neighbors = []
-        min_cost = np.inf
-        best_branch = []
-        best_start_node = None
-
-        for node in block_nodes:
-            branch = []
-            target_node = node
-            cost = 0.0
-            current_pos = self.robot.at.pos
-
-            while visited_node_count < nodes_to_visit:
-                cost += self.lazy_greedy_heuristic(current_pos, target_node)
-                if cost > min_cost:
-                    print(f"Abandoning branch from {node.name} with cost {cost} > min_cost {min_cost}")
-                    break
-
-                target_block = target_node.values[-1].occupied_by
-                target_block = cast(Object, target_block)
-                current_pos = target_node.values[-1].pos
-
-                ranked_neighbors = target_block.ranked_neighbors
-                for neighbor_name in ranked_neighbors:
-                    if (neighbor_name not in self.goal_blocks) and (neighbor_name not in visited_neighbors):
-                        visited_neighbors.append(neighbor_name)
-                        break
-
-                target_block.preferred_neighbor = neighbor_name
-                neighbor_obj = self.domain.name_things.get(neighbor_name)
-                neighbor_obj = cast(Object, neighbor_obj)
-                neighbor_pose = neighbor_obj.at
-                neighbor_pose = cast(Pose, neighbor_pose)
-
-                neighbor_node_name = f"{neighbor_obj.name}_at_{neighbor_pose.name}"
-                neighbor_node = self.dtg.get(neighbor_node_name)
-                neighbor_node = cast(Node, neighbor_node)
-                target_node = neighbor_node
-
-                visited_node_count += 1
-
-            min_cost = cost
-            best_start_node = node
-
-        current_state = self.current_linked_state.state
-        available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
-        available_nodes = self.prune_unrelated_nodes(available_nodes)
-
-        target_node = best_start_node
-        target_node = cast(Node, target_node)
-        home_node = self.dtg.get(f"robot_at_{self.robot.at.name}")
-        home_node = cast(Node, home_node)
-        edge = (home_node, str('move'), target_node)
-        best_branch.append(edge)
-
-        action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(edge)
-        action_args = []
-        for param in action_params.values():
-            action_args.append(param.name)
-        action = Action((action_name, action_args))
-
-        self.log(action_name, edge, action_applicable)
-
-        s_new = apply_action(current_state, conds, action_params, effects)
-        self.state_counter += 1
-        self.current_linked_state = self.expand_state(s_new, action)
-
         while not self.domain.goal_reached:
-            current_state = self.current_linked_state.state
+            # Define branches at current state
             available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
             available_nodes = self.prune_unrelated_nodes(available_nodes)
+            branches = self.branch_out(self.find_block_positions(), available_nodes)
 
-            preferred_action = self.find_preferred_action(self.find_block_positions(), available_nodes)
+            # Evalute the branches and assign costs
+            weighted_branches = self.evaluate_branches(branches, heuristic_types.GREEDY_NEIGHBOR)
+            self.current_linked_state.branches_to_explore = weighted_branches
+            current_state = self.current_linked_state.state
 
-            match preferred_action:
-                case 'pick':
-                    home_node, target_node = self.define_pick_branch(self.robot.at.name)
-                case 'place':
-                    home_node, target_node = self.define_place_branch()
-                case 'move':
-                    home_node = self.dtg.get(f"robot_at_{self.robot.at.name}")
-                    home_node = cast(Node, home_node)
+            # Choose the lowest cost edge to expand next
+            selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
 
-                    if not self.robot.gripper_empty:
-                        target_block = self.robot.holding
-                        target_block = cast(Object, target_block)
-                        goal_pose = target_block.goal
-                        goal_pose = cast(Pose, goal_pose)
-
-                        target_node_name = f"robot_at_{goal_pose.name}"
-                        target_node = self.dtg.get(target_node_name)
-                        target_node = cast(Node, target_node)
-                    else:
-                        current_block = target_node.values[-1].occupied_by
-                        current_block = cast(Object, current_block)
-                        preferred_neighbor_name = current_block.preferred_neighbor
-
-                        neighbor_obj = self.domain.name_things.get(preferred_neighbor_name)
-                        neighbor_obj = cast(Object, neighbor_obj)
-                        neighbor_pose = neighbor_obj.at
-                        neighbor_pose = cast(Pose, neighbor_pose)
-
-                        target_node_name = f"robot_at_{neighbor_pose.name}"
-                        target_node = self.dtg.get(target_node_name)
-                        target_node = cast(Node, target_node)
-                case _:
-                    raise ValueError(f"Unknown action: {preferred_action}")
-
-            edge = (home_node, preferred_action, target_node)
-
-            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(edge)
+            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
             action_args = []
             for param in action_params.values():
                 action_args.append(param.name)
             action = Action((action_name, action_args))
 
-            self.log(action_name, edge, action_applicable)
+            self.log(action_name, selected_branch, action_applicable)
+
+            if not action_applicable:
+                print(f"Action [{action_name}] not applicable, skipping.")
+                continue
 
             s_new = apply_action(current_state, conds, action_params, effects)
             self.state_counter += 1
+            self.steps += 1
             self.current_linked_state = self.expand_state(s_new, action)
 
-            best_branch.append(edge)
+            if self.domain.goal_reached:
+                goal_linked_states.append(self.current_linked_state)
+                if self.steps < shortest_num_steps:
+                    shortest_num_steps = self.steps
 
-        self.goal_linked_states.append(self.current_linked_state)
+        # Can potentially have multiple queues for multiple heuristics
 
-        return best_branch
+        return goal_linked_states
 
     def run_ordered_landmarks_planner(self) -> List[LinkedState]:
         goal_linked_states = []
