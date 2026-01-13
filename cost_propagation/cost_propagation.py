@@ -16,7 +16,7 @@ def spawn_blocks(domain: Domain) -> Tuple[Dict[str, Object], List[Tuple[float, f
         Spawn 'virtual' blocks at their goal positions.
     """
     virtual_blocks = []
-    blocks = domain.things.get(Object, [])
+    blocks = domain.things.get(Object, []).copy()
     poses = domain.things.get(Pose, [])
 
     blocks = cast(List[Object], blocks)
@@ -24,12 +24,14 @@ def spawn_blocks(domain: Domain) -> Tuple[Dict[str, Object], List[Tuple[float, f
 
     for block in blocks:
         goal_pose = block.goal
+        if not goal_pose:
+            continue
+
         virtual_block = Object(name=f"{block.name}_virtual", at=goal_pose, real=False)
         virtual_blocks.append(virtual_block)
 
     blocks.extend(virtual_blocks)
     block_positions = [cast(Pose, block.at).pos for block in blocks]
-
     blocks_obj_dict = {block.name: block for block in blocks}
 
     return blocks_obj_dict, block_positions
@@ -39,7 +41,10 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
 
     for block, block_pos in zip(real_blocks, block_positions):
         init_pos = block_pos
-        goal_pos = cast(Pose, block.goal).pos
+        goal_pose = cast(Pose, block.goal)
+        if not goal_pose:
+            continue
+        goal_pos = goal_pose.pos
 
         init_goal_vec = np.array(goal_pos) - np.array(init_pos)
         init_goal_vec_u = init_goal_vec / np.linalg.norm(init_goal_vec)
@@ -65,4 +70,6 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
                 if blocking_block.real:
                     block.propagated_cost += propagated_cost
                 else:
-                    blocking_block.propagated_cost += propagated_cost
+                    father_block_name = blocking_block.name.replace("_virtual", "")
+                    father_block = blocks_obj_dict[father_block_name]
+                    father_block.propagated_cost += propagated_cost
