@@ -31,11 +31,11 @@ class OrderedLandmarksPlanner:
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
-    def run_ordered_landmarks_planner_with_preferred_neighbors(self) -> List[LinkedState]:
+    def run_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> List[LinkedState]:
         goal_linked_states = []
         shortest_num_steps = np.inf
 
-        nodes = query_available_nodes(self.dtg, self.domain.current_state)
+        nodes = query_nodes(self.dtg, self.domain.current_state)
         nodes = self.prune_unrelated_nodes(nodes)
 
         block_nodes = [node for node in nodes if not node.name.startswith('robot')]
@@ -49,12 +49,13 @@ class OrderedLandmarksPlanner:
             branches = self.branch_out(self.find_block_positions(), available_nodes)
 
             # Evalute the branches and assign costs
-            weighted_branches = self.evaluate_branches(branches, heuristic_types.GREEDY_NEIGHBOR)
+            weighted_branches = self.evaluate_branches(branches, heuristic)
             self.current_linked_state.branches_to_explore = weighted_branches
             current_state = self.current_linked_state.state
 
             # Choose the lowest cost edge to expand next
             selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
+            print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
 
             action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
             action_args = []
@@ -77,52 +78,6 @@ class OrderedLandmarksPlanner:
                 goal_linked_states.append(self.current_linked_state)
                 if self.steps < shortest_num_steps:
                     shortest_num_steps = self.steps
-
-        # Can potentially have multiple queues for multiple heuristics
-
-        return goal_linked_states
-
-    def run_ordered_landmarks_planner(self) -> List[LinkedState]:
-        goal_linked_states = []
-        shortest_num_steps = np.inf
-
-        while not self.domain.goal_reached:
-            # Define branches at current state
-            available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
-            available_nodes = self.prune_unrelated_nodes(available_nodes)
-            branches = self.branch_out(self.find_block_positions(), available_nodes)
-
-            # Evalute the branches and assign costs
-            weighted_branches = self.evaluate_branches(branches)
-            self.current_linked_state.branches_to_explore = weighted_branches
-            current_state = self.current_linked_state.state
-
-            # Choose the lowest cost edge to expand next
-            selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
-
-            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
-            action_args = []
-            for param in action_params.values():
-                action_args.append(param.name)
-            action = Action((action_name, action_args))
-
-            self.log(action_name, selected_branch, action_applicable)
-
-            if not action_applicable:
-                print(f"Action [{action_name}] not applicable, skipping.")
-                continue
-
-            s_new = apply_action(current_state, conds, action_params, effects)
-            self.state_counter += 1
-            self.steps += 1
-            self.current_linked_state = self.expand_state(s_new, action)
-
-            if self.domain.goal_reached:
-                goal_linked_states.append(self.current_linked_state)
-                if self.steps < shortest_num_steps:
-                    shortest_num_steps = self.steps
-
-        # Can potentially have multiple queues for multiple heuristics
 
         return goal_linked_states
 
@@ -250,6 +205,7 @@ class OrderedLandmarksPlanner:
                     cost = 0.0
 
             evaluated_branches.append((node, action_name, target_node, cost))
+            print(f"Evaluated branch: {node.name} --[{action_name}]--> {target_node.name} with cost: {cost}")
 
         return evaluated_branches
 
@@ -281,7 +237,6 @@ class OrderedLandmarksPlanner:
         block = cast(Object, block)
         ranked_neighbors = block.ranked_neighbors
 
-        # This is the actual heuristic calculation
         # First sum up greedy costs for the current target
         current_cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
         cost += current_cost
@@ -295,6 +250,8 @@ class OrderedLandmarksPlanner:
 
             neighbor_obj = self.domain.name_things.get(neighbor_name)
             neighbor_obj = cast(Object, neighbor_obj)
+            neighbor_obj.preferred_neighbor = neighbor_name
+
             neighbor_pose = neighbor_obj.at
             neighbor_pose = cast(Pose, neighbor_pose)
 
@@ -312,9 +269,6 @@ class OrderedLandmarksPlanner:
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             target_node = neighbor_node
-
-            # From here we can expand the states following the neighbor chain
-            # Then we choose the minimum cost among all chains as the heuristic
 
         return cost
 
