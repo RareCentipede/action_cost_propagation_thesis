@@ -13,7 +13,7 @@ def main():
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
 
-    ap.run_ordered_landmarks_planner()
+    ap.run_ordered_landmarks_planner_with_preferred_neighbors()
 
     plan = ap.retrace_action_sequence_back_to_root()[0]
 

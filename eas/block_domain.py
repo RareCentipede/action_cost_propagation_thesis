@@ -49,6 +49,7 @@ class Object(Thing):
     below: 'Object | None' = None
     goal: 'Pose | None' = None
     ranked_neighbors: List[str] = field(default_factory=list)
+    preferred_neighbor: str = ""
     propagated_cost: float = 0.0
     variables = ("at", "at_top", "on", "below")
 
