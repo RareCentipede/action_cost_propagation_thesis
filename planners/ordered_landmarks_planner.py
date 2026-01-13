@@ -55,7 +55,8 @@ class OrderedLandmarksPlanner:
 
             # Choose the lowest cost edge to expand next
             selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
-            print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
 
             action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
             action_args = []
@@ -205,7 +206,8 @@ class OrderedLandmarksPlanner:
                     cost = 0.0
 
             evaluated_branches.append((node, action_name, target_node, cost))
-            print(f"Evaluated branch: {node.name} --[{action_name}]--> {target_node.name} with cost: {cost}")
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Evaluated branch: {node.name} --[{action_name}]--> {target_node.name} with cost: {cost}")
 
         return evaluated_branches
 
@@ -244,13 +246,15 @@ class OrderedLandmarksPlanner:
 
         while visited_node_count < nodes_to_visit:
             for neighbor_name in ranked_neighbors:
-                if (neighbor_name not in self.goal_blocks) and (neighbor_name not in visited_neighbors):
+                if (neighbor_name not in visited_neighbors):
                     visited_neighbors.append(neighbor_name)
                     break
 
             neighbor_obj = self.domain.name_things.get(neighbor_name)
             neighbor_obj = cast(Object, neighbor_obj)
-            neighbor_obj.preferred_neighbor = neighbor_name
+            block.preferred_neighbor = neighbor_name
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Block {block.name} ranked neighbors: {ranked_neighbors}, preferred neighbor: {neighbor_name}")
 
             neighbor_pose = neighbor_obj.at
             neighbor_pose = cast(Pose, neighbor_pose)
@@ -269,6 +273,8 @@ class OrderedLandmarksPlanner:
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             target_node = neighbor_node
+            block = neighbor_obj
+            ranked_neighbors = block.ranked_neighbors
 
         return cost
 
