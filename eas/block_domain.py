@@ -44,6 +44,7 @@ class Pose(Thing):
 @dataclass(eq=False)
 class Object(Thing):
     at: Pose | None
+    real: bool = True
     at_top: bool = True
     on: 'Object | Ground | None' = None
     below: 'Object | None' = None
