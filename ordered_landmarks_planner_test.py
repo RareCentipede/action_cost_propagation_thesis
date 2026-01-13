@@ -19,7 +19,7 @@ def main():
     for obj in cast(list[Object], objects):
         print(f"Object: {obj.name}, Propagated Cost: {obj.propagated_cost}")
 
-    ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
+    ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.DEBUG)
     ap.run_ordered_landmarks_planner(heuristic_types.GREEDY_NEIGHBOR)
 
     plan = ap.retrace_action_sequence_back_to_root()[0]
