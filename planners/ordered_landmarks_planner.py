@@ -67,8 +67,8 @@ class OrderedLandmarksPlanner:
             self.log(action_name, selected_branch, action_applicable)
 
             if not action_applicable:
-                print(f"Action [{action_name}] not applicable, skipping.")
-                continue
+                print(f"Action [{action_name}] not applicable, terminating search.")
+                break
 
             s_new = apply_action(current_state, conds, action_params, effects)
             self.state_counter += 1
