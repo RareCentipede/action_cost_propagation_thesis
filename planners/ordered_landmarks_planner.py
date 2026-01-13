@@ -31,19 +31,47 @@ class OrderedLandmarksPlanner:
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
-    def run_ordered_landmarks_planner_with_preferred_neighbors(self) -> List[LinkedState]:
-        nodes = query_nodes(self.dtg, self.domain.current_state)
+    def run_ordered_landmarks_planner_with_preferred_neighbors(self) -> List[List[LinkedState]]:
+        """
+            Assume monotone problems where no block needs to be moved more than once.
+            Use preferred neighbor information to guide the search.
+        """
+        branches = [[]]
+        nodes = query_available_nodes(self.dtg, self.domain.current_state)
+        nodes = self.prune_unrelated_nodes(nodes)
+
         block_nodes = [node for node in nodes if not node.name.startswith('robot')]
         goal_nodes = [node for node in self.goal_nodes.values()]
         define_neighbor_preferences(block_nodes, goal_nodes)
 
+        nodes_to_visit = len(self.goal_blocks)
+        visited_node_count = 0
+        visited_neighbors = []
 
+        for node in block_nodes:
+            cost = self.lazy_greedy_heuristic(self.robot.at.pos, node)
+            preferred_action = self.find_preferred_action(self.find_block_positions(), nodes)
 
-        return self.run_ordered_landmarks_planner()
+            if preferred_action == 'pick':
+                _, target_node = self.define_pick_branch(self.robot.at.name)
+            elif preferred_action == 'place':
+                _, target_node = self.define_place_branch()
+            else:
+                if self.robot.gripper_empty:
+                    target_node = node.values[1]
+
+        return branches
 
     def run_ordered_landmarks_planner(self) -> List[LinkedState]:
         goal_linked_states = []
         shortest_num_steps = np.inf
+
+        nodes = query_available_nodes(self.dtg, self.domain.current_state)
+        nodes = self.prune_unrelated_nodes(nodes)
+
+        block_nodes = [node for node in nodes if not node.name.startswith('robot')]
+        goal_nodes = [node for node in self.goal_nodes.values()]
+        define_neighbor_preferences(block_nodes, goal_nodes)
 
         while not self.domain.goal_reached:
             # Define branches at current state
@@ -52,7 +80,7 @@ class OrderedLandmarksPlanner:
             branches = self.branch_out(self.find_block_positions(), available_nodes)
 
             # Evalute the branches and assign costs
-            weighted_branches = self.evaluate_branches(branches)
+            weighted_branches = self.evaluate_branches(branches, heuristic_types.GREEDY_NEIGHBOR)
             self.current_linked_state.branches_to_explore = weighted_branches
             current_state = self.current_linked_state.state
 
@@ -232,7 +260,15 @@ class OrderedLandmarksPlanner:
         nodes_to_visit = len(self.goal_blocks)
         visited_neighbors = []
 
-        ranked_neighbors = target_node.values[1].ranked_neighbors
+        block_positions = self.find_block_positions()
+        blocks_at_goal_positions = [pos for pos in block_positions if pos in self.goal_positions]
+        nodes_to_visit -= len(blocks_at_goal_positions)
+
+        block = target_node.values[1].occupied_by
+        block = cast(Object, block)
+        ranked_neighbors = block.ranked_neighbors
+
+        print(ranked_neighbors)
 
         # This is the actual heuristic calculation
         # First sum up greedy costs for the current target
@@ -242,7 +278,7 @@ class OrderedLandmarksPlanner:
 
         while visited_node_count < nodes_to_visit:
             for neighbor_name in ranked_neighbors:
-                if neighbor_name not in self.goal_blocks and neighbor_name not in visited_neighbors:
+                if (neighbor_name not in self.goal_blocks) and (neighbor_name not in visited_neighbors):
                     visited_neighbors.append(neighbor_name)
                     break
 
@@ -255,7 +291,7 @@ class OrderedLandmarksPlanner:
             neighbor_node = self.dtg.get(neighbor_node_name)
             neighbor_node = cast(Node, neighbor_node)
 
-            target_goal = target_node.values[1].goal
+            target_goal = block.goal
             target_goal = cast(Pose, target_goal)
             target_goal_pos = target_goal.pos
 
