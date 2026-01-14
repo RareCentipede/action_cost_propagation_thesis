@@ -16,16 +16,12 @@ def main():
     dtg = create_domain_transition_graph(block_domain)
 
     blocks_obj_dict, block_positions = spawn_blocks(block_domain)
-    perform_initial_cost_propagation(blocks_obj_dict, block_positions)
-    objects = block_domain.things.get(Object, [])
+    scaled_projected_vecs_lists = perform_initial_cost_propagation(blocks_obj_dict, block_positions)
 
     robot = block_domain.things.get(Robot, [])[0]
     robot = cast(Robot, robot)
 
-    visualize_cost_propagation(blocks_obj_dict, block_positions, robot.at.pos)
-
-    for obj in cast(list[Object], objects):
-        print(f"Object: {obj.name}, Propagated Cost: {obj.propagated_cost}")
+    visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
     ap.run_ordered_landmarks_planner(heuristic_types.GREEDY_NEIGHBOR)

@@ -36,28 +36,31 @@ def spawn_blocks(domain: Domain) -> Tuple[Dict[str, Object], List[Tuple[float, f
 
     return blocks_obj_dict, block_positions
 
-def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]]):
+def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]]) -> np.ndarray:
     real_blocks = [block for block in blocks_obj_dict.values() if block.real]
+    scaled_projected_vecs_lists = []
 
     for block_idx, (block, block_pos) in enumerate(zip(real_blocks, block_positions)):
         init_pos = block_pos
-        goal_pose = cast(Pose, block.goal)
-        if not goal_pose:
+        if not block.goal:
             continue
-        goal_pos = goal_pose.pos
+        goal_pos = block.goal.pos
+        goal_pos_id = block_positions.index(goal_pos)
 
         init_goal_vec = np.array(goal_pos) - np.array(init_pos)
 
         other_block_positions = block_positions.copy()
         other_block_positions.remove(block_pos)
+        other_block_positions.remove(goal_pos)
 
-        dists, projected_vecs_scaling_factors = compute_dists_from_point_to_vec(np.array(other_block_positions), init_goal_vec, np.array(init_pos))
+        dists, projected_vecs_scaling_factors, scaled_projected_vecs = compute_dists_from_point_to_vec(np.array(other_block_positions), init_goal_vec, np.array(init_pos))
 
-        influence_radius = 1.0
+        influence_radius = 0.5
         for i in range(len(dists)):
             dist = dists[i]
             scaling = projected_vecs_scaling_factors[i]
             blocking_block_id = i if i < block_idx else i+1
+            blocking_block_id = blocking_block_id if blocking_block_id < goal_pos_id else blocking_block_id+1
 
             print(f"Block {block.name} checking block {blocking_block_id+1}: dist={dist}, scaling={scaling}")
 
@@ -72,7 +75,11 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
                     father_block = blocks_obj_dict[father_block_name]
                     father_block.propagated_cost += propagated_cost
 
-def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, start_point: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        scaled_projected_vecs_lists.append(scaled_projected_vecs)
+    
+    return np.array(scaled_projected_vecs_lists)
+
+def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, start_point: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
         Compute the shortest distances from a set of points to a vector.
         1. Project each point onto the vector
@@ -82,31 +89,55 @@ def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, star
     """
     init_to_other_blocks_vecs = [np.array(other_pos) - np.array(start_point) for other_pos in points]
     vecs_projected_on_init_goal_vec = np.array([np.dot(vec, vector) for vec in init_to_other_blocks_vecs])
-    projected_vecs_scaling_factors = vecs_projected_on_init_goal_vec / np.linalg.norm(vector)
+    projected_vecs_scaling_factors = vecs_projected_on_init_goal_vec / (np.linalg.norm(vector)**2)
 
     scaled_projected_vecs = [scaling * vector for scaling in projected_vecs_scaling_factors]
     dists = [np.linalg.norm(vec - proj_vec) for vec, proj_vec in zip(init_to_other_blocks_vecs, scaled_projected_vecs)]
 
-    return np.array(dists), np.array(projected_vecs_scaling_factors)
+    return np.array(dists), np.array(projected_vecs_scaling_factors), np.array(scaled_projected_vecs)
 
-def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]], robot_pos: Tuple[float, float, float]):
-    fig = plt.figure()
-    ax = fig.add_subplot()
-
+def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]], scaled_projected_vecs_lists: np.ndarray,
+                               robot_pos: Tuple[float, float, float] | None = None):
     real_blocks = [block for block in blocks_obj_dict.values() if block.real]
 
-    ax.scatter(robot_pos[0], robot_pos[1], s=50, c='red', marker='^')
-
+    idx = 0
     for block, block_pos in zip(real_blocks, block_positions):
-        ax.scatter(block_pos[0], block_pos[1], s=50, c='blue')
-        ax.text(block_pos[0], block_pos[1], f"{block.name}\nCost: {block.propagated_cost:.1f}", fontsize=8, ha='right')
-
-        goal_pose = block.goal
-        if not goal_pose:
+        if not block.goal:
             continue
-        goal_pos = goal_pose.pos
 
-        ax.scatter(goal_pos[0], goal_pos[1], s=50, c='green')
-        ax.plot([block_pos[0], goal_pos[0]], [block_pos[1], goal_pos[1]], c='black', linestyle='--')
+        goal_pos = block.goal.pos
 
-    plt.show()
+        fig = plt.figure()
+        ax = fig.add_subplot()
+
+        print(f"Plotting for {block.name}")
+
+        for block_to_plot, block_pos_to_plot in zip(real_blocks, block_positions):
+            if robot_pos:
+                ax.scatter(robot_pos[0], robot_pos[1], s=50, c='red', marker='^')
+
+            ax.scatter(block_pos_to_plot[0], block_pos_to_plot[1], s=50, c='blue')
+            ax.text(block_pos_to_plot[0], block_pos_to_plot[1], f"{block_to_plot.name}\nCost: {block_to_plot.propagated_cost:.1f}", fontsize=8, ha='right')
+
+            if not block_to_plot.goal:
+                continue
+            goal_pos_to_plot = block_to_plot.goal.pos
+
+            ax.scatter(goal_pos_to_plot[0], goal_pos_to_plot[1], s=50, c='green')
+            ax.plot([block_pos_to_plot[0], goal_pos_to_plot[0]], [block_pos_to_plot[1], goal_pos_to_plot[1]], c='black', linestyle='--')
+
+        other_block_positions = block_positions.copy()
+        other_block_positions.remove(block_pos)
+        other_block_positions.remove(goal_pos)
+
+        scaled_projected_vecs = scaled_projected_vecs_lists[idx]
+        for other_block_pos, scaling in zip(other_block_positions, scaled_projected_vecs):
+            projected_point = np.array(block_pos) + scaling
+            projection = projected_point - np.array(other_block_pos)
+            ax.arrow(other_block_pos[0], other_block_pos[1], projection[0], projection[1],
+                    head_width=0.05, head_length=0.1, fc='orange', ec='orange', linestyle=':')
+            ax.scatter(projected_point[0], projected_point[1], s=30, c='red', marker='x')
+
+        idx += 1
+
+        plt.show()
