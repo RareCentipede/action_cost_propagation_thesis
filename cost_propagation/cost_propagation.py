@@ -88,3 +88,25 @@ def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, star
     dists = [np.linalg.norm(vec - proj_vec) for vec, proj_vec in zip(init_to_other_blocks_vecs, scaled_projected_vecs)]
 
     return np.array(dists), np.array(projected_vecs_scaling_factors)
+
+def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]], robot_pos: Tuple[float, float, float]):
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    real_blocks = [block for block in blocks_obj_dict.values() if block.real]
+
+    ax.scatter(robot_pos[0], robot_pos[1], s=50, c='red', marker='^')
+
+    for block, block_pos in zip(real_blocks, block_positions):
+        ax.scatter(block_pos[0], block_pos[1], s=50, c='blue')
+        ax.text(block_pos[0], block_pos[1], f"{block.name}\nCost: {block.propagated_cost:.1f}", fontsize=8, ha='right')
+
+        goal_pose = block.goal
+        if not goal_pose:
+            continue
+        goal_pos = goal_pose.pos
+
+        ax.scatter(goal_pos[0], goal_pos[1], s=50, c='green')
+        ax.plot([block_pos[0], goal_pos[0]], [block_pos[1], goal_pos[1]], c='black', linestyle='--')
+
+    plt.show()
