@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import patches
+from matplotlib.axes import Axes
 from typing import List, Tuple, Dict, cast
 from scipy.spatial import KDTree
 
@@ -75,11 +76,12 @@ class OccupancyGridMap:
         self.oc_grid_map = oc_grid
         return self.oc_grid_map
 
-    def plot_occupancy_grid_map(self, grid: np.ndarray, oc_grid: np.ndarray) -> None:
+    def plot_occupancy_grid_map(self, grid: np.ndarray, oc_grid: np.ndarray, ax: Axes | None = None):
         if self.grid_limits is None:
             raise ValueError("Grid limits not set. Cannot plot grid.")
 
-        plt.figure(figsize=(8, 8))
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(8, 8))
 
         (min_x, max_x), (min_y, max_y) = self.grid_limits
 
@@ -87,17 +89,21 @@ class OccupancyGridMap:
             color = 'black' if occ == 1 else 'white'
             rect = patches.Rectangle((point[0]-self.grid_res/2, point[1]-self.grid_res/2),
                                      self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor=color)
-            plt.gca().add_patch(rect)
+            ax.add_patch(rect)
 
         for obj in self.objects:
             obj_pos = cast(Pose, obj.at).pos[:2]
             rect = patches.Rectangle((obj_pos[0]-self.grid_res/2, obj_pos[1]-self.grid_res/2),
                                      self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor='red')
-            plt.gca().add_patch(rect)
+            ax.add_patch(rect)
 
-        plt.xlim(min_x, max_x)
-        plt.ylim(min_y, max_y)
-        plt.gca().set_aspect('equal', adjustable='box')
-        plt.title("Occupancy Grid Map")
-        plt.xlabel("X")
-        plt.ylabel("Y")
+            if obj.goal:
+                goal_pos = cast(Pose, obj.goal).pos[:2]
+                ax.scatter(goal_pos[0], goal_pos[1], s=100, c='green', marker='*')
+
+        ax.set_xlim(min_x, max_x)
+        ax.set_ylim(min_y, max_y)
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_title("Occupancy Grid Map")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")

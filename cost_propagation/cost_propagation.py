@@ -104,13 +104,10 @@ def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positio
     for block, block_pos in zip(real_blocks, block_positions):
         if not block.goal:
             continue
-
         goal_pos = block.goal.pos
 
         fig = plt.figure()
         ax = fig.add_subplot()
-
-        print(f"Plotting for {block.name}")
 
         for block_to_plot, block_pos_to_plot in zip(real_blocks, block_positions):
             if robot_pos:

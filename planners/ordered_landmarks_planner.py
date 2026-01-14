@@ -299,9 +299,10 @@ class OrderedLandmarksPlanner:
 
         return self.current_linked_state
 
-    def retrace_action_sequence_back_to_root(self) -> List[List[Action]]:
+    def retrace_action_sequence_back_to_root(self) -> Tuple[List[List[Action]], List[State]]:
         action_sequence = []
         action_sequences = []
+        states = []
 
         for state in self.goal_linked_states:
             while state.parent is not None:
@@ -309,9 +310,10 @@ class OrderedLandmarksPlanner:
                 action_sequence.insert(0, action)
                 state = state.parent[1]
             action_sequences.append(action_sequence)
+            states.append(state)
             action_sequence = []
 
-        return action_sequences
+        return action_sequences, states
 
     def backtrack(self):
         while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == StateStatus.GOAL):
