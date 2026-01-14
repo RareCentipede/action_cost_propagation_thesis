@@ -1,12 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
+
 from matplotlib import patches
 from matplotlib.axes import Axes
 from typing import List, Tuple, Dict, cast
 from scipy.spatial import KDTree
 
-from eas.EAS import Domain
-from eas.block_domain import Pose, Object, Robot
+from eas.EAS import Domain, State
+from eas.block_domain import Pose, Object
 
 class OccupancyGridMap:
     def __init__(self, domain: Domain, grid_res: float = 0.1, col_margin: float = 1.0, grid_limits: Tuple[Tuple[float, float], Tuple[float, float]] | None = None) -> None:
@@ -21,6 +22,8 @@ class OccupancyGridMap:
 
         self.poses = cast(List[Pose], domain.things.get(Pose))
         self.objects = cast(List[Object], domain.things.get(Object))
+        self.obj_positions = [cast(Pose, obj.at).pos for obj in self.objects]
+        self.goal_positions = [cast(Pose, obj.goal).pos for obj in self.objects if obj.goal is not None]
 
         if self.grid_limits is None:
             self.grid_limits = self.compute_grid_limits()
@@ -69,6 +72,33 @@ class OccupancyGridMap:
         self.oc_grid = oc_grid
         return self.oc_grid
 
+    def assign_occupancy_from_state(self, state: State) -> np.ndarray:
+        oc_grid = np.zeros_like(self.grid[:,0], dtype=int) # 0: free, 1: occupied
+        grid_tree = KDTree(self.grid)
+
+        blocks = self.domain.things.get(Object, [])
+        blocks = cast(List[Object], blocks)
+
+        block_names = [f"{block.name}" for block in blocks]
+        block_pose_names = [state.get(f"{block_name}_at") for block_name in block_names]
+        block_positions = []
+
+        for pose_name in block_pose_names:
+            if not pose_name:
+                continue
+
+            pose = self.domain.name_things.get(pose_name)
+            pose = cast(Pose, pose)
+            block_pos = pose.pos[:2]
+            block_positions.append(block_pos)
+            occupied_indices = grid_tree.query_ball_point(block_pos, r=self.col_margin)
+            oc_grid[occupied_indices] = 1
+
+        self.oc_grid = oc_grid
+        self.obj_positions = block_positions
+
+        return self.oc_grid
+
     def create_occupancy_grid_map(self) -> np.ndarray:
         grid = self.create_grid()
         oc_grid = self.assign_occupancy(grid)
@@ -91,15 +121,13 @@ class OccupancyGridMap:
                                      self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor=color)
             ax.add_patch(rect)
 
-        for obj in self.objects:
-            obj_pos = cast(Pose, obj.at).pos[:2]
+        for obj_pos in self.obj_positions:
             rect = patches.Rectangle((obj_pos[0]-self.grid_res/2, obj_pos[1]-self.grid_res/2),
                                      self.grid_res, self.grid_res, linewidth=0.5, edgecolor='gray', facecolor='red')
             ax.add_patch(rect)
 
-            if obj.goal:
-                goal_pos = cast(Pose, obj.goal).pos[:2]
-                ax.scatter(goal_pos[0], goal_pos[1], s=100, c='green', marker='*')
+        for goal_pos in self.goal_positions:
+            ax.scatter(goal_pos[0], goal_pos[1], s=100, c='green', marker='*')
 
         ax.set_xlim(min_x, max_x)
         ax.set_ylim(min_y, max_y)

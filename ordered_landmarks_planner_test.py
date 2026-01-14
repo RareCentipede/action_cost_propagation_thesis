@@ -41,7 +41,10 @@ def main():
     ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
     ap.run_ordered_landmarks_planner(heuristic_types.GREEDY_NEIGHBOR)
 
-    plan, states = ap.retrace_action_sequence_back_to_root()[0]
+    plan, states = ap.retrace_action_sequence_back_to_root()
+    plan = plan[0] if plan else None
+
+    print(f"num states: {len(states)}")
 
     if plan:
         print(f"Plan found 😄! Total number of goal states: {len(ap.goal_linked_states)}")
@@ -49,11 +52,19 @@ def main():
         for step_idx, action in enumerate(plan):
             print(f"Step {step_idx}: {action}")
 
+            current_state = states[step_idx]
+            robot_at = current_state[f"{robot.name}_at"]
+            robot_pos = block_domain.name_things.get(robot_at)
+            robot_pos = cast(Pose, robot_pos).pos
+
             action_name, params = action
             if action_name == 'move':
                 fig, ax = plt.subplots(figsize=(8, 8))
+                oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
                 oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
-                ax.scatter(robot_init_pos[0], robot_init_pos[1], color='blue', label='Robot Start', s=50, marker='^')
+                graph = create_nx_nodes(oc_map)
+
+                ax.scatter(robot_pos[0], robot_pos[1], color='blue', label='Robot Start', s=50, marker='^')
 
                 _, start_pose, goal_pose = params
                 start_pose = block_domain.name_things.get(start_pose)
@@ -69,9 +80,17 @@ def main():
 
                 plt.show()
 
+        fig, ax = plt.subplots(figsize=(8, 8))
+        oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
+        oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
+        ax.scatter(robot_pos[0], robot_pos[1], color='blue', label='Robot Start', s=50, marker='^')
+
+        plt.show()
+
         # cd = CommandDispatcher(block_domain)
         # cd.initialize_objects()
         # cd.run_simulation(plan)
+
     else:
         print("No plan found 😢")
 

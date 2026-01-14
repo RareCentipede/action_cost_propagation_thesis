@@ -308,9 +308,11 @@ class OrderedLandmarksPlanner:
             while state.parent is not None:
                 action = state.parent[0]
                 action_sequence.insert(0, action)
+
+                states.insert(0, state.state)
                 state = state.parent[1]
+
             action_sequences.append(action_sequence)
-            states.append(state)
             action_sequence = []
 
         return action_sequences, states
