@@ -229,7 +229,6 @@ class OrderedLandmarksPlanner:
         cost = 0.0
         visited_node_count = 0
         nodes_to_visit = len(self.goal_blocks)
-        visited_neighbors = []
 
         block_positions = self.find_block_positions()
         blocks_at_goal_positions = [pos for pos in block_positions if pos in self.goal_positions]
@@ -237,12 +236,21 @@ class OrderedLandmarksPlanner:
 
         block = target_node.values[1].occupied_by
         block = cast(Object, block)
-        ranked_neighbors = block.ranked_neighbors
 
         # First sum up greedy costs for the current target
         current_cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
         cost += current_cost
         visited_node_count += 1
+
+        cost = self.compute_cost_to_preferred_neighbor(visited_node_count, nodes_to_visit, block)
+
+        return cost
+
+    def compute_cost_to_preferred_neighbor(self, visited_node_count: int, nodes_to_visit: int, initial_block: Object) -> float:
+        cost = 0.0
+        visited_neighbors = []
+        block = initial_block
+        ranked_neighbors = block.ranked_neighbors
 
         while visited_node_count < nodes_to_visit:
             for neighbor_name in ranked_neighbors:
@@ -272,7 +280,6 @@ class OrderedLandmarksPlanner:
             visited_node_count += 1
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
-            target_node = neighbor_node
             block = neighbor_obj
             ranked_neighbors = block.ranked_neighbors
 
