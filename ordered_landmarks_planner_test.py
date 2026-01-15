@@ -18,7 +18,7 @@ def main():
     block_domain = parse_configs(domain, config_name, problem_config_path)
     dtg = create_domain_transition_graph(block_domain)
 
-    oc_map = OccupancyGridMap(block_domain, grid_res=0.5, col_margin=0.0)
+    oc_map = OccupancyGridMap(block_domain, grid_res=0.5, col_margin=0.5)
     oc_grid = oc_map.create_occupancy_grid_map()
     graph = create_nx_nodes(oc_map)
 
@@ -34,15 +34,14 @@ def main():
     oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
     ax.scatter(robot_init_pos[0], robot_init_pos[1], color='blue', label='Robot Start', s=50, marker='^')
 
-    plt.show()
+    # plt.show()
 
-    # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
+    visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
-    ap.run_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
+    ap.run_ordered_landmarks_planner(heuristic_types.GREEDY_NEIGHBOR)
 
-    plan, states = ap.retrace_action_sequence_back_to_root()
-    plan = plan[0] if plan else None
+    plan, states = ap.retrace_optimal_action_sequence_back_to_root()
     total_path_cost = 0.0
 
     print(f"num states: {len(states)}")
@@ -82,14 +81,14 @@ def main():
 
                 ax.plot(path[:,0], path[:,1], color='red')
 
-                # plt.show()
+                plt.show()
 
         fig, ax = plt.subplots(figsize=(8, 8))
         oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
         oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
         ax.scatter(robot_pos[0], robot_pos[1], color='blue', label='Robot Start', s=50, marker='^')
 
-        # plt.show()
+        plt.show()
 
         print(f"Total path cost of the plan: {total_path_cost:.2f}")
 
