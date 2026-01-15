@@ -55,14 +55,14 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
 
         dists, projected_vecs_scaling_factors, scaled_projected_vecs = compute_dists_from_point_to_vec(np.array(other_block_positions), init_goal_vec, np.array(init_pos))
 
-        influence_radius = 0.5
+        influence_radius = 1.0
         for i in range(len(dists)):
             dist = dists[i]
             scaling = projected_vecs_scaling_factors[i]
             blocking_block_id = i if i < block_idx else i+1
             blocking_block_id = blocking_block_id if blocking_block_id < goal_pos_id else blocking_block_id+1
 
-            print(f"Block {block.name} checking block {blocking_block_id+1}: dist={dist}, scaling={scaling}")
+            # print(f"Block {block.name} checking block {blocking_block_id+1}: dist={dist}, scaling={scaling}")
 
             if dist < influence_radius and (scaling >= 0 and scaling <= 1):
                 propagated_cost = (influence_radius*2 - dist)
