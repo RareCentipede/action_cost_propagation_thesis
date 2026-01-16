@@ -198,7 +198,7 @@ def define_neighbor_preferences(block_nodes: List[Node], goal_nodes: List[Node])
         block_positions = [node.values[-1].pos for node in unique_block_nodes]
         dists_from_goal = np.linalg.norm(np.array(block_positions) - np.array(goal_pos), axis=1)
         p_costs = [node.values[1].propagated_cost for node in unique_block_nodes]
-        total_costs = dists_from_goal + np.array(p_costs)
+        total_costs = dists_from_goal + p_costs
 
         sorted_neighbors_indices = np.argsort(total_costs)
         ranked_neighbors = [unique_block_nodes[i].values[1].name for i in sorted_neighbors_indices]

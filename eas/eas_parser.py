@@ -131,6 +131,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
                 above_pose = poses_in_stack[j+1]
                 below_pose = poses_in_stack[j-1]
 
+                below_pose.below = pose
                 pose.on = below_pose
                 pose.below = above_pose
                 above_pose.on = pose
