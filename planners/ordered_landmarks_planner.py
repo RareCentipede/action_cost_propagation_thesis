@@ -42,6 +42,57 @@ class OrderedLandmarksPlanner:
         goal_nodes = [node for node in self.goal_nodes.values()]
         define_neighbor_preferences(block_nodes, goal_nodes)
 
+        while not self.domain.goal_reached:
+            # Define branches at current state
+            available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
+            available_nodes = self.prune_unrelated_nodes(available_nodes)
+            branches = self.branch_out(self.find_block_positions(), available_nodes)
+
+            # Evalute the branches and assign costs
+            weighted_branches = self.evaluate_branches(branches, heuristic)
+            self.current_linked_state.branches_to_explore = weighted_branches
+            current_state = self.current_linked_state.state
+
+            # Choose the lowest cost edge to expand next
+            selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])[:-1] # Remove cost
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
+
+            action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(selected_branch)
+            action_args = []
+            for param in action_params.values():
+                action_args.append(param.name)
+            action = Action((action_name, action_args))
+
+            self.log(action_name, selected_branch, action_applicable)
+
+            if not action_applicable:
+                print(f"Action [{action_name}] not applicable, terminating search.")
+                break
+
+            s_new = apply_action(current_state, conds, action_params, effects)
+            self.state_counter += 1
+            self.steps += 1
+            self.current_linked_state = self.expand_state(s_new, action)
+
+            if self.domain.goal_reached:
+                goal_linked_states.append(self.current_linked_state)
+                if self.steps < shortest_num_steps:
+                    shortest_num_steps = self.steps
+
+        return goal_linked_states
+
+    def run_optimal_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> List[LinkedState]:
+        goal_linked_states = []
+        shortest_num_steps = np.inf
+
+        nodes = query_nodes(self.dtg, self.domain.current_state)
+        nodes = self.prune_unrelated_nodes(nodes)
+
+        block_nodes = [node for node in nodes if not node.name.startswith('robot')]
+        goal_nodes = [node for node in self.goal_nodes.values()]
+        define_neighbor_preferences(block_nodes, goal_nodes)
+
         # Define initial branches at root state
         available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
         available_nodes = self.prune_unrelated_nodes(available_nodes)
@@ -332,7 +383,7 @@ class OrderedLandmarksPlanner:
 
         return cost
 
-    def expand_state(self, s_new: State, action: Action, nav_cost: float, p_cost: float) -> LinkedState:
+    def expand_state(self, s_new: State, action: Action, nav_cost: float = 0.0, p_cost: float = 0.0) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state), costs=[nav_cost, p_cost])
         self.current_linked_state.weighted_edges.append((action[0], s_new_linked, 0.0))
 
