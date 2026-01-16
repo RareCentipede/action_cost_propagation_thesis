@@ -97,15 +97,19 @@ class OrderedLandmarksPlanner:
         available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
         available_nodes = self.prune_unrelated_nodes(available_nodes)
         branches = self.branch_out(self.find_block_positions(), available_nodes)
+        weighted_branches = self.evaluate_branches(branches, heuristic)
 
         # Explore each branch until goal reached in each one
         # If goal cannot be reached at a branch, skip it.
         # After all branches expanded to goal, go down each one, sum up costs and discount the propagated costs along the way.
         # Choose the cheapest branch as the final plan.
 
-        for branch in branches:
+        for weighted_branch in weighted_branches:
             self.current_linked_state = self.s0
             current_state = self.current_linked_state.state
+            init_branch_cost = weighted_branch[3]
+            branch = weighted_branch[:-1]  # Remove cost
+
             self.domain.update_state(current_state)
             self.steps = 0
 
@@ -125,9 +129,8 @@ class OrderedLandmarksPlanner:
             self.state_counter += 1
             self.steps += 1
 
-            branch = self.evaluate_branches([branch], heuristic)
-            nav_cost = branch[0][3]
-            p_cost = branch[0][2].values[-1].occupied_by.propagated_cost
+            nav_cost = weighted_branch[3] + init_branch_cost
+            p_cost = weighted_branch[2].values[-1].occupied_by.propagated_cost
             self.current_linked_state = self.expand_state(s_new, action, nav_cost, p_cost)
 
             while not self.domain.goal_reached:
@@ -159,7 +162,10 @@ class OrderedLandmarksPlanner:
 
                 self.log(action_name, selected_branch, action_applicable)
 
-                if not action_applicable:
+                if not action_applicable: # If action not applicable, try a different branch from the same state.
+                    # problem arises when place action is not applicable. It has to be done in a determined order
+                    # due to stacking. Simply breaking out here will terminate the entire branch search and 
+                    # might not find a plan even if one exists. Not enough exploring.
                     print(f"Action [{action_name}] not applicable, terminating search.")
                     break
 
@@ -167,7 +173,6 @@ class OrderedLandmarksPlanner:
                 self.state_counter += 1
                 self.steps += 1
 
-                nav_cost, p_cost = 0.0, 0.0
                 if action_name == 'move' and self.robot.gripper_empty:
                     nav_cost = weighted_selected_branch[3]
                     p_cost = weighted_selected_branch[2].values[-1].occupied_by.propagated_cost
@@ -452,6 +457,9 @@ class OrderedLandmarksPlanner:
 
             total_sequence_costs.append(total_cost)
 
+        total_sequence_costs = np.array(total_sequence_costs)
+        print(f"Total sequence costs for all goal states: {total_sequence_costs}")
+
         optimal_idx = int(np.argmin(np.array(total_sequence_costs)))
         optimal_actions = action_sequences[optimal_idx]
         optimal_states = states_lists[optimal_idx]
@@ -481,7 +489,7 @@ class OrderedLandmarksPlanner:
         action_tuple = cast(Tuple, action_tuple)
         _, conds, effects = action_tuple
 
-        action_applicable = is_action_applicable(conds, action_params)
+        action_applicable = is_action_applicable(conds, action_params, True)
 
         return action_name, action_params, conds, effects, action_applicable
 
