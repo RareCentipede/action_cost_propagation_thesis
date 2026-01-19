@@ -65,7 +65,7 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
             # print(f"Block {block.name} checking block {blocking_block_id+1}: dist={dist}, scaling={scaling}")
 
             if dist < influence_radius and (scaling >= 0 and scaling <= 1):
-                propagated_cost = (influence_radius*2 - dist)
+                propagated_cost = (influence_radius*2 - dist).item()
                 blocking_block = list(blocks_obj_dict.values())[blocking_block_id]
 
                 if blocking_block.real:
