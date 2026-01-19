@@ -38,7 +38,7 @@ def main():
 
     # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
-    ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.DEBUG)
+    ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
     # ap.run_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
     ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
     # plans, states = ap.retrace_action_sequence_back_to_root()
@@ -84,14 +84,14 @@ def main():
 
                 ax.plot(path[:,0], path[:,1], color='red')
 
-                plt.show()
+                # plt.show()
 
         fig, ax = plt.subplots(figsize=(8, 8))
         oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
         oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
         ax.scatter(robot_pos[0], robot_pos[1], color='blue', label='Robot Start', s=50, marker='^')
 
-        plt.show()
+        # plt.show()
 
         print(f"Total path cost of the plan: {total_path_cost:.2f}")
 
