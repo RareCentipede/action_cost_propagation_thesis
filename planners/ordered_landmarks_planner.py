@@ -122,8 +122,8 @@ class OrderedLandmarksPlanner:
             self.log(action_name, branch, action_applicable)
 
             if not action_applicable:
-                print(f"Action [{action_name}] not applicable, terminating search.")
-                break
+                print(f"Action [{action_name}] not applicable, going to next branch.")
+                continue
 
             s_new = apply_action(current_state, conds, action_params, effects)
             self.state_counter += 1
@@ -134,23 +134,28 @@ class OrderedLandmarksPlanner:
             self.current_linked_state = self.expand_state(s_new, action, nav_cost, p_cost)
 
             while not self.domain.goal_reached:
-                # Define branches at current state
-                available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
-                available_nodes = self.prune_unrelated_nodes(available_nodes)
-                branches = self.branch_out(self.find_block_positions(), available_nodes)
+                weighted_branches = self.current_linked_state.branches_to_explore
+                if not weighted_branches:
+                    # Define branches at current state
+                    available_nodes = query_available_nodes(self.dtg, self.current_linked_state.state)
+                    available_nodes = self.prune_unrelated_nodes(available_nodes)
+                    branches = self.branch_out(self.find_block_positions(), available_nodes)
 
-                if not branches:
-                    print("No more branches to explore, terminating search of branch.")
-                    break
+                    if not branches:
+                        print(f"No more branches to explore from state id {self.current_linked_state.state_id}, backtracking.")
+                        self.backtrack()
+                        continue
 
-                # Evalute the branches and assign costs
-                weighted_branches = self.evaluate_branches(branches, heuristic)
-                self.current_linked_state.branches_to_explore = weighted_branches
+                    # Evalute the branches and assign costs
+                    weighted_branches = self.evaluate_branches(branches, heuristic)
+                    self.current_linked_state.branches_to_explore = weighted_branches
+
+                weighted_selected_branch = min(weighted_branches, key=lambda x: x[3])
+                self.current_linked_state.branches_to_explore.remove(weighted_selected_branch)
+
                 current_state = self.current_linked_state.state
-
-                # Choose the lowest cost edge to expand next
-                weighted_selected_branch = min(self.current_linked_state.branches_to_explore, key=lambda x: x[3])
                 selected_branch = weighted_selected_branch[:-1]
+
                 if self.verbosity == verbose_levels.DEBUG:
                     print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
 
@@ -162,12 +167,10 @@ class OrderedLandmarksPlanner:
 
                 self.log(action_name, selected_branch, action_applicable)
 
-                if not action_applicable: # If action not applicable, try a different branch from the same state.
-                    # problem arises when place action is not applicable. It has to be done in a determined order
-                    # due to stacking. Simply breaking out here will terminate the entire branch search and 
-                    # might not find a plan even if one exists. Not enough exploring.
-                    print(f"Action [{action_name}] not applicable, terminating search.")
-                    break
+                if not action_applicable:
+                    print(f"Action [{action_name}] not applicable, backtracking.")
+                    self.backtrack()
+                    continue
 
                 s_new = apply_action(current_state, conds, action_params, effects)
                 self.state_counter += 1
@@ -390,7 +393,7 @@ class OrderedLandmarksPlanner:
 
     def expand_state(self, s_new: State, action: Action, nav_cost: float = 0.0, p_cost: float = 0.0) -> LinkedState:
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state), costs=[nav_cost, p_cost])
-        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, 0.0))
+        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, nav_cost))
 
         self.domain.update_state(s_new)
         self.current_linked_state = s_new_linked
@@ -467,7 +470,7 @@ class OrderedLandmarksPlanner:
         return optimal_actions, optimal_states
 
     def backtrack(self):
-        while (not self.current_linked_state.branches_to_explore) or (self.current_linked_state.type_ == StateStatus.GOAL):
+        while (not self.current_linked_state.branches_to_explore):
             if self.current_linked_state.parent is None:
                 print(f"Explored all branches from the root state. Total states explored: {self.state_counter}.")
                 self.domain.update_state(self.current_linked_state.state)
