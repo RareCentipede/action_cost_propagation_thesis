@@ -27,6 +27,8 @@ class OrderedLandmarksPlanner:
         self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter)
         self.current_linked_state = self.s0
         self.goal_linked_states = []
+        self.theoretical_min_steps = len(self.goal_blocks) * 2  # Each block requires at least a pick and place
+        self.moves = 0
 
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
@@ -317,7 +319,7 @@ class OrderedLandmarksPlanner:
 
         return evaluated_branches
 
-    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node) -> float:
+    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, p_discount_factor: float | None = None) -> float:
         target_pos = target_node.values[-1].pos
         cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
 
@@ -328,6 +330,12 @@ class OrderedLandmarksPlanner:
 
         goal_pos = target_obj_goal.pos
         cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+
+        if not p_discount_factor:
+            p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
+
+        cost += target_obj.propagated_cost * p_discount_factor
+        print(f"Steps: {self.steps}, Propagated cost discount factor: {p_discount_factor:.2f}, Final cost: {cost:.2f}")
 
         return cost.item()
 
@@ -382,8 +390,9 @@ class OrderedLandmarksPlanner:
             target_goal_pos = target_goal.pos
 
             # Add distance between target's goal and neighbor to cost
-            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node)
             visited_node_count += 1
+            p_discount_factor = 1 - (visited_node_count / nodes_to_visit)
+            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node, p_discount_factor)
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             block = neighbor_obj
@@ -456,7 +465,7 @@ class OrderedLandmarksPlanner:
                     continue
 
                 nav_cost, p_cost = step_costs
-                total_cost += nav_cost + p_cost * (1 - step_idx/seq_len)
+                total_cost += nav_cost
 
             total_sequence_costs.append(total_cost)
 
@@ -492,7 +501,7 @@ class OrderedLandmarksPlanner:
         action_tuple = cast(Tuple, action_tuple)
         _, conds, effects = action_tuple
 
-        action_applicable = is_action_applicable(conds, action_params, True)
+        action_applicable = is_action_applicable(conds, action_params)
 
         return action_name, action_params, conds, effects, action_applicable
 
