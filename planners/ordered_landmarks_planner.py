@@ -27,7 +27,7 @@ class OrderedLandmarksPlanner:
 
         self.state_counter = 0
         self.steps = 0
-        self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter)
+        self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter, costs=[0.0, 0.0])
         self.current_linked_state = self.s0
         self.goal_linked_states = []
         self.theoretical_min_steps = len(self.goal_blocks) * 2  # Each block requires at least a pick and place
@@ -41,6 +41,7 @@ class OrderedLandmarksPlanner:
         shortest_num_steps = np.inf
         min_cost = np.inf
         current_cost = 0.0
+        current_state_id = 0
 
         nodes = query_nodes(self.dtg, self.domain.current_state)
         nodes = self.prune_unrelated_nodes(nodes)
@@ -60,6 +61,7 @@ class OrderedLandmarksPlanner:
         # Choose the cheapest branch as the final plan.
         for weighted_branch in weighted_branches:
             self.current_linked_state = self.s0
+            self.current_linked_state.branches_to_explore.remove(weighted_branch)
             current_state = self.current_linked_state.state
             current_cost = weighted_branch[3]
 
@@ -74,8 +76,17 @@ class OrderedLandmarksPlanner:
             self.state_counter += 1
             self.steps += 1
 
-            while not self.domain.goal_reached:
+            while not self.domain.goal_reached and self.current_linked_state.state_id != 0:
+                new_state_id = self.current_linked_state.state_id
+
+                if new_state_id < current_state_id:
+                    current_cost = self.current_linked_state.costs[0]
+
+                current_state_id = new_state_id
+
                 weighted_branches = self.current_linked_state.branches_to_explore
+                # current_cost = self.current_linked_state.costs[0]
+                print(f"Exploring from state id {self.current_linked_state.state_id}, steps taken: {self.steps}, current cost: {current_cost}")
 
                 if not weighted_branches:
                     # Define branches at current state
@@ -83,12 +94,8 @@ class OrderedLandmarksPlanner:
 
                     if not branches:
                         print(f"No more branches to explore from state id {self.current_linked_state.state_id}, backtracking.")
-                        backed_linked_state = self.backtrack()
-
-                        if backed_linked_state is None:
-                            break
-                        self.current_linked_state = backed_linked_state
-                        current_cost = self.current_linked_state.costs[0]
+                        self.backtrack()
+                        # current_cost = self.current_linked_state.costs[0]
 
                         continue
 
@@ -109,12 +116,8 @@ class OrderedLandmarksPlanner:
 
                 new_linked_state = self.expand_from_branch(current_state, weighted_selected_branch)
                 if not new_linked_state:
-                    backed_linked_state = self.backtrack()
-
-                    if backed_linked_state is None:
-                        break
-                    self.current_linked_state = backed_linked_state
-                    current_cost = self.current_linked_state.costs[0]
+                    self.backtrack()
+                    # current_cost = self.current_linked_state.costs[0]
 
                     continue
 
@@ -122,15 +125,11 @@ class OrderedLandmarksPlanner:
                     print(f"Current cost {current_cost} not better than current minimum {min_cost}.")
 
                     if len(self.current_linked_state.branches_to_explore) > 0:
-                        current_cost -= weighted_selected_branch[3]
+                        # current_cost -= weighted_selected_branch[3]
                         continue
 
-                    backed_linked_state = self.backtrack()
-
-                    if backed_linked_state is None:
-                        break
-                    self.current_linked_state = backed_linked_state
-                    current_cost = self.current_linked_state.costs[0]
+                    self.backtrack()
+                    # current_cost = self.current_linked_state.costs[0]
 
                     continue
 
@@ -149,7 +148,7 @@ class OrderedLandmarksPlanner:
 
         return goal_linked_states
 
-    def expand_from_branch(self, current_state: State, weighted_branch: Tuple[Node, str, Node, float], extra_cost: float = 0.0) -> LinkedState | None:
+    def expand_from_branch(self, current_state: State, weighted_branch: Tuple[Node, str, Node, float]) -> LinkedState | None:
         nav_cost, p_cost = 0.0, 0.0
         branch = weighted_branch[:-1]  # Remove cost
         branch_cost = weighted_branch[3]
@@ -170,8 +169,10 @@ class OrderedLandmarksPlanner:
         s_new = apply_action(current_state, conds, action_params, effects)
 
         if action_name == 'move' and self.robot.gripper_empty:
-            nav_cost = branch_cost + extra_cost
+            nav_cost = branch_cost
             p_cost = branch_target_node.values[-1].occupied_by.propagated_cost
+        else:
+            nav_cost = self.current_linked_state.costs[0]
 
         return self.expand_state(s_new, action, nav_cost, p_cost)
 
@@ -275,13 +276,14 @@ class OrderedLandmarksPlanner:
         """
         evaluated_branches = []
 
-        if len(branches) == 1:
-            branch = branches[0]
-            branch = (*branch, 0.0)
-            return [branch]
-
         for branch in branches:
             node, action_name, target_node = branch
+
+            if action_name != 'move' or not self.robot.gripper_empty:
+                branch = branches[0]
+                branch = (*branch, 0.0)
+                return [branch]
+
             action_params = parse_action_params(action_name, node, target_node)
 
             action_tuple = self.domain.actions.get(action_name)
@@ -469,6 +471,10 @@ class OrderedLandmarksPlanner:
         total_sequence_costs = []
         sequence_costs = []
 
+        if len(self.goal_linked_states) == 0:
+            print("No goal linked states to retrace.")
+            return [], []
+
         for state in self.goal_linked_states:
             current_sequence_costs = []
             action_sequence = []
@@ -509,26 +515,22 @@ class OrderedLandmarksPlanner:
 
         return optimal_actions, optimal_states
 
-    def backtrack(self) -> LinkedState | None:
+    def backtrack(self):
         current_linked_state = self.current_linked_state
-        while (not current_linked_state.branches_to_explore):
+        while not current_linked_state.branches_to_explore:
             if current_linked_state.parent is None:
                 print("Returned to root, terminating search on this branch.")
                 self.domain.update_state(current_linked_state.state)
-                # print(self.domain.current_state)
-                return None
+                break
 
             if self.verbosity == verbose_levels.DEBUG:
-                print(f"Back track from {current_linked_state.state_id} to {current_linked_state.parent[1].state_id}")
+                print(f"Back track from {current_linked_state.state_id} to {current_linked_state.parent[1].state_id}, branches: {len(current_linked_state.parent[1].branches_to_explore)}")
 
             current_linked_state = current_linked_state.parent[1]
             self.domain.update_state(current_linked_state.state)
             self.steps -= 1
 
-        if current_linked_state.state_id == 0:
-            return None
-
-        return current_linked_state
+        self.current_linked_state = current_linked_state
 
     def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
