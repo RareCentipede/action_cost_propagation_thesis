@@ -11,8 +11,8 @@ from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
-heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY DILIGENT_GREEDY GREEDY_NEIGHBOR')
-    
+heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED DILIGENT_GREEDY GREEDY_NEIGHBOR GREEDY_NEIGHBOR_PROPAGATED')
+
 class OrderedLandmarksPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap, verbosity: verbose_levels = verbose_levels.NONE):
         self.domain = domain
@@ -296,6 +296,8 @@ class OrderedLandmarksPlanner:
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
                     cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
+                case heuristic_types.LAZY_GREEDY_PROPAGATED:
+                    cost = self.lazy_greedy_propagated_heuristic(self.robot.at.pos, target_node)
                 case heuristic_types.DILIGENT_GREEDY:
                     cost = self.diligent_greedy_heuristic(self.robot.at.pos, target_node)
                 case heuristic_types.GREEDY_NEIGHBOR:
@@ -309,7 +311,24 @@ class OrderedLandmarksPlanner:
 
         return evaluated_branches
 
-    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, p_discount_factor: float | None = None) -> float:
+    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node) -> float:
+        target_pos = target_node.values[-1].pos
+        cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
+
+        target_obj = target_node.values[-1].occupied_by
+        target_obj = cast(Object, target_obj)
+        target_obj_goal = target_obj.goal
+        target_obj_goal = cast(Pose, target_obj_goal)
+
+        goal_pos = target_obj_goal.pos
+        cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+
+        if self.verbosity == verbose_levels.INFO:
+            print(f"Steps: {self.steps}, Final cost: {cost:.2f}")
+
+        return cost.item()
+
+    def lazy_greedy_propagated_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, p_discount_factor: float | None = None) -> float:
         target_pos = target_node.values[-1].pos
         cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
 
@@ -421,8 +440,7 @@ class OrderedLandmarksPlanner:
 
             # Add distance between target's goal and neighbor to cost
             visited_node_count += 1
-            p_discount_factor = 1 - (visited_node_count / nodes_to_visit)
-            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node, p_discount_factor)
+            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node)
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             block = neighbor_obj

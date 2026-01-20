@@ -40,7 +40,7 @@ def main():
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.NONE)
     # ap.run_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
-    ap.run_optimal_ordered_landmarks_planner(heuristic_types.DILIGENT_GREEDY)
+    ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
     # plans, states = ap.retrace_action_sequence_back_to_root()
     # plan = plans[0] if plans else None
 
