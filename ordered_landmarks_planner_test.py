@@ -38,9 +38,9 @@ def main():
 
     # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
-    ap = OrderedLandmarksPlanner(block_domain, dtg, verbose_levels.NONE)
+    ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.NONE)
     # ap.run_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
-    ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
+    ap.run_optimal_ordered_landmarks_planner(heuristic_types.DILIGENT_GREEDY)
     # plans, states = ap.retrace_action_sequence_back_to_root()
     # plan = plans[0] if plans else None
 

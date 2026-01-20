@@ -7,14 +7,17 @@ from eas.block_domain import Pose, Robot, Object, create_goal_nodes, define_neig
 from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_available_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
 from typing import Tuple, Dict, cast, List
+from mapping.oc_map import OccupancyGridMap
+from mapping.path_planner import create_nx_nodes, astar
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
-heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY GREEDY_NEIGHBOR')
-
+heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY DILIGENT_GREEDY GREEDY_NEIGHBOR')
+    
 class OrderedLandmarksPlanner:
-    def __init__(self, domain: Domain, dtg: Dict[str, Node], verbosity: verbose_levels = verbose_levels.NONE):
+    def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap, verbosity: verbose_levels = verbose_levels.NONE):
         self.domain = domain
         self.dtg = dtg
+        self.ocm = ocm
         self.verbosity = verbosity
 
         self.goal_nodes = create_goal_nodes(self.domain, self.dtg)
@@ -58,8 +61,7 @@ class OrderedLandmarksPlanner:
         for weighted_branch in weighted_branches:
             self.current_linked_state = self.s0
             current_state = self.current_linked_state.state
-            init_branch_cost = weighted_branch[3]
-            current_cost = init_branch_cost
+            current_cost = weighted_branch[3]
 
             self.domain.update_state(current_state)
             self.steps = 0
@@ -94,7 +96,8 @@ class OrderedLandmarksPlanner:
                     weighted_branches = self.evaluate_branches(branches, heuristic)
                     self.current_linked_state.branches_to_explore = weighted_branches
 
-                weighted_selected_branch = min(weighted_branches, key=lambda x: x[3])
+                weighted_selected_branch = min(weighted_branches, key=lambda x: x[3]) # Can sort when the branches are evaluated
+                # Then just need to pop the first one each time
                 self.current_linked_state.branches_to_explore.remove(weighted_selected_branch)
 
                 current_state = self.current_linked_state.state
@@ -119,6 +122,7 @@ class OrderedLandmarksPlanner:
                     print(f"Current cost {current_cost} not better than current minimum {min_cost}.")
 
                     if len(self.current_linked_state.branches_to_explore) > 0:
+                        current_cost -= weighted_selected_branch[3]
                         continue
 
                     backed_linked_state = self.backtrack()
@@ -164,9 +168,9 @@ class OrderedLandmarksPlanner:
             return None
 
         s_new = apply_action(current_state, conds, action_params, effects)
-        nav_cost = branch_cost + extra_cost
 
         if action_name == 'move' and self.robot.gripper_empty:
+            nav_cost = branch_cost + extra_cost
             p_cost = branch_target_node.values[-1].occupied_by.propagated_cost
 
         return self.expand_state(s_new, action, nav_cost, p_cost)
@@ -292,6 +296,8 @@ class OrderedLandmarksPlanner:
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
                     cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
+                case heuristic_types.DILIGENT_GREEDY:
+                    cost = self.diligent_greedy_heuristic(self.robot.at.pos, target_node)
                 case heuristic_types.GREEDY_NEIGHBOR:
                     cost = self.greedy_neighbor_heuristic(target_node)
                 case _:
@@ -322,6 +328,44 @@ class OrderedLandmarksPlanner:
 
         if self.verbosity == verbose_levels.INFO:
             print(f"Steps: {self.steps}, Propagated cost discount factor: {p_discount_factor:.2f}, Final cost: {cost:.2f}")
+
+        return cost.item()
+
+    def create_map_and_graph(self, ocm: OccupancyGridMap, state: State):
+        ocm.assign_occupancy_from_state(state)
+        graph = create_nx_nodes(ocm)
+
+        return graph
+
+    def diligent_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, p_discount_factor: float | None = None) -> float:
+        cost = 0.0
+
+        target_obj = target_node.values[-1].occupied_by
+        target_obj_pos = target_node.values[-1].pos
+        target_obj = cast(Object, target_obj)
+        target_obj_goal = target_obj.goal
+        target_obj_goal = cast(Pose, target_obj_goal)
+        target_goal_pos = target_obj_goal.pos
+
+        self.ocm.assign_occupancy_from_state(self.current_linked_state.state)
+        graph = create_nx_nodes(self.ocm)
+
+        start = (current_pos[0], current_pos[1])
+        goal = (target_obj_pos[0], target_obj_pos[1])
+
+        path_to_block = np.array(astar(graph, self.ocm.oc_grid, start, goal))
+        cost += np.sum(np.linalg.norm(np.diff(path_to_block, axis=0), axis=1))
+
+        start = (target_obj_pos[0], target_obj_pos[1])
+        goal = (target_goal_pos[0], target_goal_pos[1])    
+
+        path_block_to_goal = np.array(astar(graph, self.ocm.oc_grid, start, goal))
+        cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1))
+
+        if not p_discount_factor:
+            p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
+
+        cost += target_obj.propagated_cost * p_discount_factor
 
         return cost.item()
 
