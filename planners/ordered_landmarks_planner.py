@@ -41,7 +41,6 @@ class OrderedLandmarksPlanner:
         shortest_num_steps = np.inf
         min_cost = np.inf
         current_cost = 0.0
-        current_state_id = 0
 
         nodes = query_nodes(self.dtg, self.domain.current_state)
         nodes = self.prune_unrelated_nodes(nodes)
@@ -59,6 +58,7 @@ class OrderedLandmarksPlanner:
         # After all branches expanded to goal, go down each one, sum up costs and discount the propagated costs along the way.
         # Choose the cheapest branch as the final plan.
         while self.s0.branches_to_explore:
+            print(f"Starting new exploration from root state, remaining branches: {len(self.s0.branches_to_explore)}")
             self.current_linked_state = self.s0
             weighted_branch = self.current_linked_state.branches_to_explore.pop(0)
             current_state = self.current_linked_state.state
@@ -68,62 +68,89 @@ class OrderedLandmarksPlanner:
 
             new_linked_state = self.expand_from_branch(current_state, weighted_branch)
             if not new_linked_state:
+                print(f"Could not expand from branch {weighted_branch} at root, skipping.")
                 continue
 
             self.current_linked_state = new_linked_state
             current_cost = self.current_linked_state.costs[0]
-            self.state_counter += 1
             self.steps += 1
 
-            while not self.domain.goal_reached and self.current_linked_state.state_id != 0:
-                new_state_id = self.current_linked_state.state_id
+            goal_linked_state, cost_to_goal = self.search_for_path_from_state_to_goal(self.current_linked_state, heuristic, min_cost)
+            current_cost += cost_to_goal
 
-                if new_state_id < current_state_id:
-                    current_cost = self.current_linked_state.costs[0]
+            if goal_linked_state:
+                goal_linked_states.append(goal_linked_state)
+                print(f"Found goal linked state at cost: {current_cost}, steps taken: {self.steps}")
 
-                current_state_id = new_state_id
+                if self.steps < shortest_num_steps:
+                    shortest_num_steps = self.steps
 
-                weighted_branches = self.branch_out(self.current_linked_state, heuristic)
-                if not weighted_branches:
-                    print(f"No more branches to explore from state id {self.current_linked_state.state_id}, backtracking.")
-                    self.backtrack()
-                    continue
-
-                if self.verbosity == verbose_levels.INFO:
-                    print(f"Exploring from state id {self.current_linked_state.state_id}, steps taken: {self.steps}, current cost: {current_cost}")
-
-                self.current_linked_state.branches_to_explore = weighted_branches
-                weighted_selected_branch = self.current_linked_state.branches_to_explore.pop(0)
-
-                current_state = self.current_linked_state.state
-                selected_branch = weighted_selected_branch[:-1]
-                current_cost += weighted_selected_branch[3]
-
-                if self.verbosity == verbose_levels.DEBUG:
-                    print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
-
-                new_linked_state = self.expand_from_branch(current_state, weighted_selected_branch)
-                if not new_linked_state or (current_cost >= min_cost):
-                    if len(self.current_linked_state.branches_to_explore) > 0:
-                        continue
-
-                    self.backtrack()
-                    continue
-
-                self.current_linked_state = new_linked_state
-                self.state_counter += 1
-                self.steps += 1
-
-                if self.domain.goal_reached:
-                    goal_linked_states.append(self.current_linked_state)
-                    if self.steps < shortest_num_steps:
-                        shortest_num_steps = self.steps
-
-                    if current_cost < min_cost:
-                        print(f"Minimum cost updated from {min_cost} to {current_cost}, at steps: {self.steps}")
-                        min_cost = current_cost
+                if current_cost < min_cost:
+                    print(f"Minimum cost updated from {min_cost} to {current_cost}, at steps: {self.steps}")
+                    min_cost = current_cost
+            else:
+                print(f"Could not reach goal from current branch at root, moving to next branch.")
 
         return goal_linked_states
+
+    def search_for_path_from_state_to_goal(self, start_linked_state: LinkedState, heuristic: heuristic_types, min_cost: float) -> Tuple[LinkedState | None, float]:
+        goal_linked_states = None
+        start_linked_state.branches_to_explore = self.branch_out(start_linked_state, heuristic)
+
+        current_linked_state = start_linked_state
+        current_cost = current_linked_state.costs[0]
+        initial_state_id = current_linked_state.state_id
+        current_state_id = initial_state_id + 1
+
+        while not self.domain.goal_reached and current_linked_state != initial_state_id:
+            new_state_id = current_linked_state.state_id
+
+            if new_state_id < current_state_id:
+                current_cost = current_linked_state.costs[0]
+            current_state_id = new_state_id
+
+            weighted_branches = self.branch_out(current_linked_state, heuristic)
+            if not weighted_branches:
+                print(f"No more branches to explore from state id {current_linked_state.state_id}, backtracking.")
+                self.backtrack(initial_state_id)
+                continue
+
+            if self.verbosity == verbose_levels.INFO:
+                print(f"Exploring from state id {current_linked_state.state_id}, steps taken: {self.steps}, current cost: {current_cost}")
+
+            current_linked_state.branches_to_explore = weighted_branches
+            weighted_selected_branch = current_linked_state.branches_to_explore.pop(0)
+
+            current_state = current_linked_state.state
+            selected_branch = weighted_selected_branch[:-1]
+            current_cost += weighted_selected_branch[3]
+
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
+
+            new_linked_state = self.expand_from_branch(current_state, weighted_selected_branch)
+            if not new_linked_state or (current_cost >= min_cost):
+                if self.verbosity == verbose_levels.DEBUG:
+                    if not new_linked_state:
+                        print(f"Could not expand from branch at state id {current_linked_state.state_id}.")
+                    else:
+                        print(f"Current cost {current_cost} exceeded min cost {min_cost}.")
+
+                if len(current_linked_state.branches_to_explore) > 0:
+                    current_cost -= weighted_selected_branch[3]
+                    print("Trying next branch from current state.")
+                    continue
+
+                self.backtrack(initial_state_id)
+                continue
+
+            current_linked_state = new_linked_state
+            self.steps += 1
+
+            if self.domain.goal_reached:
+                goal_linked_states = current_linked_state
+
+        return goal_linked_states, current_cost
 
     def expand_from_branch(self, current_state: State, weighted_branch: Tuple[Node, str, Node, float]) -> LinkedState | None:
         nav_cost, p_cost = 0.0, 0.0
@@ -158,6 +185,9 @@ class OrderedLandmarksPlanner:
             Find useful branches to explore from the current state. Return the updated linked state with branches to explore.
         """
         if current_linked_state.branches_to_explore:
+            if self.verbosity == verbose_levels.DEBUG:
+                print(f"Using existing branches to explore from state id {current_linked_state.state_id}, num branches: {len(current_linked_state.branches_to_explore)}")
+
             return current_linked_state.branches_to_explore
 
         available_nodes = query_available_nodes(self.dtg, current_linked_state.state)
@@ -392,8 +422,8 @@ class OrderedLandmarksPlanner:
             neighbor_obj = self.domain.name_things.get(neighbor_name)
             neighbor_obj = cast(Object, neighbor_obj)
             block.preferred_neighbor = neighbor_name
-            if self.verbosity == verbose_levels.DEBUG:
-                print(f"Block {block.name} ranked neighbors: {ranked_neighbors}, preferred neighbor: {neighbor_name}")
+            # if self.verbosity == verbose_levels.DEBUG:
+                # print(f"Block {block.name} ranked neighbors: {ranked_neighbors}, preferred neighbor: {neighbor_name}")
 
             neighbor_pose = neighbor_obj.at
             neighbor_pose = cast(Pose, neighbor_pose)
@@ -418,6 +448,8 @@ class OrderedLandmarksPlanner:
         return cost
 
     def expand_state(self, s_new: State, action: Action, nav_cost: float = 0.0, p_cost: float = 0.0) -> LinkedState:
+        self.state_counter += 1
+
         s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state), costs=[nav_cost, p_cost])
         self.current_linked_state.weighted_edges.append((action[0], s_new_linked, nav_cost))
 
@@ -499,11 +531,15 @@ class OrderedLandmarksPlanner:
 
         return optimal_actions, optimal_states
 
-    def backtrack(self):
+    def backtrack(self, stopping_state_id: int | None = None):
         current_linked_state = self.current_linked_state
         while not current_linked_state.branches_to_explore:
             if current_linked_state.parent is None:
                 print("Returned to root, terminating search on this branch.")
+                self.domain.update_state(current_linked_state.state)
+                break
+            elif stopping_state_id is not None and current_linked_state.state_id == stopping_state_id:
+                print(f"Reached stopping state id {stopping_state_id}, halting backtrack.")
                 self.domain.update_state(current_linked_state.state)
                 break
 
@@ -575,12 +611,10 @@ class OrderedLandmarksPlanner:
 
         elif self.verbosity == verbose_levels.DEBUG:
             print(f"Branching: {branch[0].name, branch[1], branch[2].name}")
-            print(f"Current state id: {self.current_linked_state.state_id}")
+            print(f"Current state id: {self.current_linked_state.state_id+1}")
 
             if action_applicable:
                 print(f"Applying action: {action_name} from {branch[0].name} to {branch[2].name}")
-            else:
-                print(f"Action [{action_name}] not applicable")
 
     @staticmethod
     def print_tree(root: LinkedState, current: LinkedState | None = None) -> None:
