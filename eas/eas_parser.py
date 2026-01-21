@@ -112,7 +112,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
         if i in visited_positions:
             continue
 
-        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=0.05, p=2)
+        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=1.2, p=2)
         visited_positions.extend(pos_idx_in_stack)
 
         poses_in_stack = np.array(poses)[pos_idx_in_stack]
