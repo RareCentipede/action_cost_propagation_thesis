@@ -40,7 +40,7 @@ def main():
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.DEBUG)
     # ap.run_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
-    ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
+    ap.run_optimal_ordered_landmarks_planner(heuristic_types.GREEDY_NEIGHBOR_PROPAGATED)
     # plans, states = ap.retrace_action_sequence_back_to_root()
     # plan = plans[0] if plans else None
 
@@ -62,7 +62,7 @@ def main():
 
             action_name, params = action
             if action_name == 'move':
-                fig, ax = plt.subplots(figsize=(8, 8))
+                # fig, ax = plt.subplots(figsize=(8, 8))
                 oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
                 # oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
                 graph = create_nx_nodes(oc_map)
@@ -86,7 +86,7 @@ def main():
 
                 # plt.show()
 
-        fig, ax = plt.subplots(figsize=(8, 8))
+        # fig, ax = plt.subplots(figsize=(8, 8))
         oc_grid = oc_map.assign_occupancy_from_state(states[step_idx])
         # oc_map.plot_occupancy_grid_map(oc_map.grid, oc_grid, ax=ax)
         # ax.scatter(robot_pos[0], robot_pos[1], color='blue', label='Robot Start', s=50, marker='^')

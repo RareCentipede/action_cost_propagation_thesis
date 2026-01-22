@@ -99,10 +99,11 @@ class OrderedLandmarksPlanner:
 
         current_linked_state = start_linked_state
         current_cost = current_linked_state.costs[0]
-        initial_state_id = current_linked_state.state_id
-        current_state_id = initial_state_id + 1
+        initial_state_id = 0
+        current_state_id = current_linked_state.state_id
 
-        while not self.domain.goal_reached and current_linked_state != initial_state_id:
+        while not self.domain.goal_reached and current_linked_state.state_id != initial_state_id:
+            self.current_linked_state = current_linked_state
             new_state_id = current_linked_state.state_id
 
             if new_state_id < current_state_id:
@@ -112,7 +113,7 @@ class OrderedLandmarksPlanner:
             weighted_branches = self.branch_out(current_linked_state, heuristic)
             if not weighted_branches:
                 print(f"No more branches to explore from state id {current_linked_state.state_id}, backtracking.")
-                self.backtrack(initial_state_id)
+                current_linked_state = self.backtrack(initial_state_id)
                 continue
 
             if self.verbosity == verbose_levels.INFO:
@@ -141,7 +142,7 @@ class OrderedLandmarksPlanner:
                     print("Trying next branch from current state.")
                     continue
 
-                self.backtrack(initial_state_id)
+                current_linked_state = self.backtrack(initial_state_id)
                 continue
 
             current_linked_state = new_linked_state
@@ -531,13 +532,14 @@ class OrderedLandmarksPlanner:
 
         return optimal_actions, optimal_states
 
-    def backtrack(self, stopping_state_id: int | None = None):
+    def backtrack(self, stopping_state_id: int | None = None) -> LinkedState:
         current_linked_state = self.current_linked_state
         while not current_linked_state.branches_to_explore:
             if current_linked_state.parent is None:
                 print("Returned to root, terminating search on this branch.")
                 self.domain.update_state(current_linked_state.state)
                 break
+
             elif stopping_state_id is not None and current_linked_state.state_id == stopping_state_id:
                 print(f"Reached stopping state id {stopping_state_id}, halting backtrack.")
                 self.domain.update_state(current_linked_state.state)
@@ -550,7 +552,7 @@ class OrderedLandmarksPlanner:
             self.domain.update_state(current_linked_state.state)
             self.steps -= 1
 
-        self.current_linked_state = current_linked_state
+        return current_linked_state
 
     def parse_action_from_branch(self, branch: Tuple[Node, str, Node]) -> Tuple[str, Dict, List[Condition], List[Effect], bool]:
         node, action_name, target_node = branch
