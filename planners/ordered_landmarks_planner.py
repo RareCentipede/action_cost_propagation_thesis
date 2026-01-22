@@ -11,7 +11,9 @@ from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
-heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED DILIGENT_GREEDY GREEDY_NEIGHBOR GREEDY_NEIGHBOR_PROPAGATED')
+heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED \
+                        DILIGENT_GREEDY DILIGENT_GREEDY_PROPAGATED \
+                        GREEDY_NEIGHBOR GREEDY_NEIGHBOR_PROPAGATED')
 
 class OrderedLandmarksPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap, verbosity: verbose_levels = verbose_levels.NONE):
@@ -315,6 +317,8 @@ class OrderedLandmarksPlanner:
                     cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node, propagate=True)
                 case heuristic_types.DILIGENT_GREEDY:
                     cost = self.diligent_greedy_heuristic(self.robot.at.pos, target_node)
+                case heuristic_types.DILIGENT_GREEDY_PROPAGATED:
+                    cost = self.diligent_greedy_heuristic(self.robot.at.pos, target_node, propagate=True)
                 case heuristic_types.GREEDY_NEIGHBOR:
                     cost = self.greedy_neighbor_heuristic(target_node)
                 case heuristic_types.GREEDY_NEIGHBOR_PROPAGATED:
@@ -355,7 +359,7 @@ class OrderedLandmarksPlanner:
 
         return cost.item()
 
-    def diligent_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, p_discount_factor: float | None = None) -> float:
+    def diligent_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False, p_discount_factor: float | None = None) -> float:
         cost = 0.0
 
         target_obj = target_node.values[-1].occupied_by
@@ -380,10 +384,10 @@ class OrderedLandmarksPlanner:
         path_block_to_goal = np.array(astar(graph, self.ocm.oc_grid, start, goal))
         cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1))
 
-        if not p_discount_factor:
-            p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
-
-        cost += target_obj.propagated_cost * p_discount_factor
+        if propagate:
+            if not p_discount_factor:
+                p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
+            cost += target_obj.propagated_cost * p_discount_factor
 
         return cost.item()
 
