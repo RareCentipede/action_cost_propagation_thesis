@@ -262,9 +262,14 @@ def query_available_nodes(dtg: Dict[str, Node], state: State) -> List[Node]:
         dtg_key = f"{var}_{val}"
         node = dtg.get(dtg_key, None)
         obj_name = var.rsplit('_', 1)[0]
+
         at_top = state.get(f'{obj_name}_at_top', None)
 
         if not node or (not at_top and obj_name != 'robot'):
+            continue
+
+        node_name_split = node.name.split('_')[-1]
+        if node_name_split == 'None':
             continue
 
         nodes.append(node)
