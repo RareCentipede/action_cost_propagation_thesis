@@ -12,7 +12,7 @@ from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
 
 def main():
-    config_name = "bridge"
+    config_name = "basic_many"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
@@ -21,9 +21,6 @@ def main():
     oc_map = OccupancyGridMap(block_domain, grid_res=0.5, col_margin=0.5)
     oc_grid = oc_map.create_occupancy_grid_map()
     graph = create_nx_nodes(oc_map)
-
-    blocks_obj_dict, block_positions = spawn_blocks(block_domain)
-    scaled_projected_vecs_lists, propagated_cost_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
 
     robot = block_domain.things.get(Robot, [])[0]
     robot = cast(Robot, robot)
@@ -36,10 +33,12 @@ def main():
 
     # plt.show()
 
-    # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
+    # blocks_obj_dict, block_positions = spawn_blocks(block_domain)
+    # scaled_projected_vecs_lists, propagated_cost_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
+    # visualize_cost_propagation(blocks_obj_dict, block_positions, propagated_cost_dict, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
-    ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.DEBUG)
-    goal_linked_states, best_goal_linked_state = ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
+    ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.NONE)
+    goal_linked_states, best_goal_linked_state = ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY_PROPAGATED)
 
     # plan, states = ap.retrace_optimal_action_sequence_back_to_root()
     plan, states = ap.retrace_action_sequence_back_to_root(best_goal_linked_state)

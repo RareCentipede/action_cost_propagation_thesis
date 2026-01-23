@@ -333,7 +333,9 @@ class OrderedLandmarksPlanner:
 
     def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False) -> float:
         target_pos = target_node.values[-1].pos
-        cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
+        ground_pt = (target_pos[0], target_pos[1], 0.5)
+        cost = np.linalg.norm(np.array(current_pos) - np.array(ground_pt))
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(target_pos))
 
         target_obj = target_node.values[-1].occupied_by
         target_obj = cast(Object, target_obj)
@@ -341,7 +343,9 @@ class OrderedLandmarksPlanner:
         target_obj_goal = cast(Pose, target_obj_goal)
 
         goal_pos = target_obj_goal.pos
-        cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+        ground_pt = (goal_pos[0], goal_pos[1], 0.5)
+        cost += np.linalg.norm(np.array(target_pos) - np.array(ground_pt))
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(goal_pos))
 
         if propagate:
             p_cost = self.propagated_costs_dict.get(target_obj.name, 0.0)
