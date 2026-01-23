@@ -31,7 +31,7 @@ class LinkedState:
     parent: 'Tuple[Action, LinkedState] | None' = None # Parent state and the action connecting them. Only the root node has no parent
     branches_to_explore: List[Tuple['Node', str, 'Node', float]] = field(default_factory=list)  # home node, action name, target node
     weighted_edges: List[Tuple[str, 'LinkedState', float]] = field(default_factory=list) # action name, linked state, cost
-    costs: List[float] = field(default_factory=list)  # Cost to reach this state via parent
+    cost: float = 0.0  # Cost to reach this state via parent
 
     def __hash__(self):
         return hash(self.state.__str__())
