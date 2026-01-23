@@ -2,13 +2,14 @@ import numpy as np
 
 from collections import deque
 from enum import Enum
+from typing import Tuple, Dict, cast, List
 
 from eas.block_domain import Pose, Robot, Object, create_goal_nodes, define_neighbor_preferences
 from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_available_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
-from typing import Tuple, Dict, cast, List
 from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
+from cost_propagation.cost_propagation import spawn_blocks, perform_cost_propagation, visualize_cost_propagation
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
 heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED \
@@ -34,6 +35,8 @@ class OrderedLandmarksPlanner:
         self.goal_linked_states = []
         self.theoretical_min_steps = len(self.goal_blocks) * 2  # Each block requires at least a pick and place
         self.moves = 0
+
+        self.propagated_costs_dict = {}
 
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
@@ -310,6 +313,10 @@ class OrderedLandmarksPlanner:
             if not action_applicable:
                 continue
 
+            blocks_obj_dict, block_positions = spawn_blocks(self.domain)
+            scaled_projected_vecs_lists, self.propagated_costs_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
+            # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=self.robot.at.pos)
+
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
                     cost = self.lazy_greedy_heuristic(self.robot.at.pos, target_node)
@@ -330,6 +337,7 @@ class OrderedLandmarksPlanner:
             if self.verbosity == verbose_levels.DEBUG:
                 print(f"Evaluated branch: {node.name} --[{action_name}]--> {target_node.name} with cost: {cost}")
 
+        self.propagated_costs_dict = {}
         evaluated_branches.sort(key=lambda x: x[3])  # Sort by cost
 
         return evaluated_branches
@@ -347,13 +355,18 @@ class OrderedLandmarksPlanner:
         cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
 
         if propagate:
-            if not p_discount_factor:
-                p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
-            cost += target_obj.propagated_cost * p_discount_factor
+            # Instead of this
+            # if not p_discount_factor:
+            #     p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
+            # cost += target_obj.propagated_cost * p_discount_factor
+            p_cost = self.propagated_costs_dict.get(target_obj.name, 0.0)
+            cost += p_cost
+            # Update the dictionary at every state before evaluation, so that propagated costs do not punish
+            # blocks that are no longer blocking the path.
 
         if self.verbosity == verbose_levels.INFO:
             if propagate:
-                print(f"Steps: {self.steps}, Propagated cost discount factor: {p_discount_factor:.2f}, Final cost: {cost:.2f}")
+                print(f"Steps: {self.steps}, Propagated cost: {p_cost:.2f}, Final cost: {cost:.2f}")
             else:
                 print(f"Steps: {self.steps}, Final cost: {cost:.2f}")
 
@@ -385,9 +398,10 @@ class OrderedLandmarksPlanner:
         cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1))
 
         if propagate:
-            if not p_discount_factor:
-                p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
-            cost += target_obj.propagated_cost * p_discount_factor
+            # if not p_discount_factor:
+            #     p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
+            # cost += target_obj.propagated_cost * p_discount_factor
+            cost += self.propagated_costs_dict.get(target_obj.name, 0.0)
 
         return cost.item()
 

@@ -24,7 +24,7 @@ def spawn_blocks(domain: Domain) -> Tuple[Dict[str, Object], List[Tuple[float, f
 
     for block in blocks:
         goal_pose = block.goal
-        if not goal_pose:
+        if not goal_pose or (cast(Pose, block.at).pos == goal_pose.pos):
             continue
 
         virtual_block = Object(name=f"{block.name}_virtual", at=goal_pose, real=False)
@@ -36,9 +36,13 @@ def spawn_blocks(domain: Domain) -> Tuple[Dict[str, Object], List[Tuple[float, f
 
     return blocks_obj_dict, block_positions
 
-def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]]) -> np.ndarray:
+def perform_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]]) -> Tuple[List, Dict[str, float]]:
     real_blocks = [block for block in blocks_obj_dict.values() if block.real]
     scaled_projected_vecs_lists = []
+    propagated_cost_dict = {}
+
+    for block in real_blocks:
+        propagated_cost_dict.update({block.name: 0.0})
 
     for block_idx, (block, block_pos) in enumerate(zip(real_blocks, block_positions)):
         init_pos = block_pos
@@ -51,7 +55,9 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
 
         other_block_positions = block_positions.copy()
         other_block_positions.remove(block_pos)
-        other_block_positions.remove(goal_pos)
+
+        if block_pos != goal_pos:
+            other_block_positions.remove(goal_pos)
 
         dists, projected_vecs_scaling_factors, scaled_projected_vecs = compute_dists_from_point_to_vec(np.array(other_block_positions), init_goal_vec, np.array(init_pos))
 
@@ -69,15 +75,17 @@ def perform_initial_cost_propagation(blocks_obj_dict: Dict[str, Object], block_p
                 blocking_block = list(blocks_obj_dict.values())[blocking_block_id]
 
                 if blocking_block.real:
+                    propagated_cost_dict[block.name] += propagated_cost
                     block.propagated_cost += propagated_cost
                 else:
                     father_block_name = blocking_block.name.replace("_virtual", "")
                     father_block = blocks_obj_dict[father_block_name]
                     father_block.propagated_cost += propagated_cost
+                    propagated_cost_dict[father_block.name] += propagated_cost
 
         scaled_projected_vecs_lists.append(scaled_projected_vecs)
     
-    return np.array(scaled_projected_vecs_lists)
+    return scaled_projected_vecs_lists, propagated_cost_dict
 
 def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, start_point: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -89,14 +97,19 @@ def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, star
     """
     init_to_other_blocks_vecs = [np.array(other_pos) - np.array(start_point) for other_pos in points]
     vecs_projected_on_init_goal_vec = np.array([np.dot(vec, vector) for vec in init_to_other_blocks_vecs])
-    projected_vecs_scaling_factors = vecs_projected_on_init_goal_vec / (np.linalg.norm(vector)**2)
+
+    vector_mag = np.linalg.norm(vector)
+    if vector_mag <= 1e-6:
+        projected_vecs_scaling_factors = np.zeros(len(init_to_other_blocks_vecs))
+    else:
+        projected_vecs_scaling_factors = vecs_projected_on_init_goal_vec / (vector_mag**2)
 
     scaled_projected_vecs = [scaling * vector for scaling in projected_vecs_scaling_factors]
     dists = [np.linalg.norm(vec - proj_vec) for vec, proj_vec in zip(init_to_other_blocks_vecs, scaled_projected_vecs)]
 
     return np.array(dists), np.array(projected_vecs_scaling_factors), np.array(scaled_projected_vecs)
 
-def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]], scaled_projected_vecs_lists: np.ndarray,
+def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions: List[Tuple[float, float, float]], scaled_projected_vecs_lists: List,
                                robot_pos: Tuple[float, float, float] | None = None):
     real_blocks = [block for block in blocks_obj_dict.values() if block.real]
 
@@ -125,9 +138,12 @@ def visualize_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positio
 
         other_block_positions = block_positions.copy()
         other_block_positions.remove(block_pos)
-        other_block_positions.remove(goal_pos)
+
+        if block_pos != goal_pos:
+            other_block_positions.remove(goal_pos)
 
         scaled_projected_vecs = scaled_projected_vecs_lists[idx]
+        print(len(other_block_positions), len(scaled_projected_vecs))
         for other_block_pos, scaling in zip(other_block_positions, scaled_projected_vecs):
             projected_point = np.array(block_pos) + scaling
             projection = projected_point - np.array(other_block_pos)
