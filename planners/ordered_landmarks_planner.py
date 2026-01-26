@@ -17,11 +17,13 @@ heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED
                         GREEDY_NEIGHBOR GREEDY_NEIGHBOR_PROPAGATED')
 
 class OrderedLandmarksPlanner:
-    def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap, verbosity: verbose_levels = verbose_levels.NONE):
+    def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap,
+                 verbosity: verbose_levels = verbose_levels.NONE, greedy: bool = False):
         self.domain = domain
         self.dtg = dtg
         self.ocm = ocm
         self.verbosity = verbosity
+        self.greedy = greedy
 
         self.goal_nodes = create_goal_nodes(self.domain, self.dtg)
         self.current_state = self.domain.current_state
@@ -283,6 +285,9 @@ class OrderedLandmarksPlanner:
             Return a list of branches with their associated costs.
         """
         evaluated_branches = []
+        propagated_heuristics = [heuristic_types.LAZY_GREEDY_PROPAGATED,
+                                   heuristic_types.DILIGENT_GREEDY_PROPAGATED,
+                                   heuristic_types.GREEDY_NEIGHBOR_PROPAGATED]
 
         for branch in branches:
             node, action_name, target_node = branch
@@ -303,9 +308,11 @@ class OrderedLandmarksPlanner:
             if not action_applicable:
                 continue
 
-            blocks_obj_dict, block_positions = spawn_blocks(self.domain)
-            scaled_projected_vecs_lists, self.propagated_costs_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
-            # visualize_cost_propagation(blocks_obj_dict, block_positions, scaled_projected_vecs_lists, robot_pos=self.robot.at.pos)
+            if heuristic in propagated_heuristics:
+                blocks_obj_dict, block_positions = spawn_blocks(self.domain)
+                scaled_projected_vecs_lists, self.propagated_cost_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
+                # visualize_cost_propagation(blocks_obj_dict, block_positions,
+                                        #    self.propagated_cost_dict, scaled_projected_vecs_lists, self.robot.at.pos)
 
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
