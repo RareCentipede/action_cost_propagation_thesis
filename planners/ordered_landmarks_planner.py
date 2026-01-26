@@ -2,13 +2,14 @@ import numpy as np
 
 from collections import deque
 from enum import Enum
+from typing import Tuple, Dict, cast, List
 
 from eas.block_domain import Pose, Robot, Object, create_goal_nodes, define_neighbor_preferences
 from eas.EAS import Action, Effect, apply_action, parse_action_params, is_action_applicable, query_available_nodes, query_nodes
 from eas.EAS import State, Node, Domain, LinkedState, StateStatus, Condition
-from typing import Tuple, Dict, cast, List
 from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
+from cost_propagation.cost_propagation import spawn_blocks, perform_cost_propagation, visualize_cost_propagation
 
 verbose_levels = Enum('VerboseLevel', 'NONE DEBUG TRACK INFO')
 heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED \
@@ -16,11 +17,13 @@ heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED
                         GREEDY_NEIGHBOR GREEDY_NEIGHBOR_PROPAGATED')
 
 class OrderedLandmarksPlanner:
-    def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap, verbosity: verbose_levels = verbose_levels.NONE):
+    def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap,
+                 verbosity: verbose_levels = verbose_levels.NONE):
         self.domain = domain
         self.dtg = dtg
         self.ocm = ocm
         self.verbosity = verbosity
+        self.greedy = False
 
         self.goal_nodes = create_goal_nodes(self.domain, self.dtg)
         self.current_state = self.domain.current_state
@@ -29,17 +32,41 @@ class OrderedLandmarksPlanner:
 
         self.state_counter = 0
         self.steps = 0
-        self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter, costs=[0.0, 0.0])
+        self.s0 = LinkedState(state=self.current_state, state_id=self.state_counter)
         self.current_linked_state = self.s0
         self.goal_linked_states = []
         self.theoretical_min_steps = len(self.goal_blocks) * 2  # Each block requires at least a pick and place
         self.moves = 0
 
+        self.propagated_costs_dict = {}
+
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
-    def run_optimal_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> List[LinkedState]:
+    def run_greedy_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> LinkedState | None:
+        self.greedy = True
+        min_cost = np.inf
+
+        nodes = query_nodes(self.dtg, self.domain.current_state)
+        nodes = self.prune_unrelated_nodes(nodes)
+
+        block_nodes = [node for node in nodes if not node.name.startswith('robot')]
+        goal_nodes = [node for node in self.goal_nodes.values()]
+        define_neighbor_preferences(block_nodes, goal_nodes)
+
+        # Define initial branches at root state
+        goal_linked_state, cost_to_goal = self.search_for_path_from_state_to_goal(self.s0, heuristic, min_cost)
+        if goal_linked_state:
+            print(f"Found goal linked state at cost: {cost_to_goal}, steps taken: {self.steps}")
+        else:
+            print(f"Could not reach goal from root state :(")
+
+        return goal_linked_state
+
+    def run_optimal_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> Tuple[List[LinkedState], LinkedState]:
         goal_linked_states = []
+        self.greedy = False
+        best_goal_linked_state = self.s0
         shortest_num_steps = np.inf
         min_cost = np.inf
         current_cost = 0.0
@@ -54,10 +81,10 @@ class OrderedLandmarksPlanner:
         # Define initial branches at root state
         weighted_branches = self.branch_out(self.s0, heuristic)
         self.s0.branches_to_explore = weighted_branches
+        self.s0.branches_to_explore.append(self.s0.branches_to_explore[0])
 
         # Explore each branch until goal reached in each one
         # If goal cannot be reached at a branch, skip it.
-        # After all branches expanded to goal, go down each one, sum up costs and discount the propagated costs along the way.
         # Choose the cheapest branch as the final plan.
         while self.s0.branches_to_explore:
             print(f"Starting new exploration from root state, remaining branches: {len(self.s0.branches_to_explore)}")
@@ -68,13 +95,13 @@ class OrderedLandmarksPlanner:
             self.domain.update_state(current_state)
             self.steps = 0
 
-            new_linked_state = self.expand_from_branch(current_state, weighted_branch)
+            new_linked_state = self.expand_from_branch(self.current_linked_state, weighted_branch)
             if not new_linked_state:
                 print(f"Could not expand from branch {weighted_branch} at root, skipping.")
                 continue
 
             self.current_linked_state = new_linked_state
-            current_cost = self.current_linked_state.costs[0]
+            current_cost = self.current_linked_state.cost
             self.steps += 1
 
             goal_linked_state, cost_to_goal = self.search_for_path_from_state_to_goal(self.current_linked_state, heuristic, min_cost)
@@ -90,32 +117,26 @@ class OrderedLandmarksPlanner:
                 if current_cost < min_cost:
                     print(f"Minimum cost updated from {min_cost} to {current_cost}, at steps: {self.steps}")
                     min_cost = current_cost
+                    best_goal_linked_state = goal_linked_state
             else:
                 print(f"Could not reach goal from current branch at root, moving to next branch.")
 
-        return goal_linked_states
+        return goal_linked_states, best_goal_linked_state
 
     def search_for_path_from_state_to_goal(self, start_linked_state: LinkedState, heuristic: heuristic_types, min_cost: float) -> Tuple[LinkedState | None, float]:
         goal_linked_states = None
-        start_linked_state.branches_to_explore = self.branch_out(start_linked_state, heuristic)
-
         current_linked_state = start_linked_state
-        current_cost = current_linked_state.costs[0]
-        initial_state_id = 0
-        current_state_id = current_linked_state.state_id
+        current_cost = current_linked_state.cost
 
-        while not self.domain.goal_reached and current_linked_state.state_id != initial_state_id:
+        while not self.domain.goal_reached and ((self.greedy and (current_linked_state.state_id >= 0)) or \
+        (not self.greedy and (current_linked_state.state_id > 0))):
             self.current_linked_state = current_linked_state
-            new_state_id = current_linked_state.state_id
-
-            if new_state_id < current_state_id:
-                current_cost = current_linked_state.costs[0]
-            current_state_id = new_state_id
+            current_cost = current_linked_state.cost
 
             weighted_branches = self.branch_out(current_linked_state, heuristic)
             if not weighted_branches:
                 print(f"No more branches to explore from state id {current_linked_state.state_id}, backtracking.")
-                current_linked_state = self.backtrack(initial_state_id)
+                current_linked_state = self.backtrack(0)
                 continue
 
             if self.verbosity == verbose_levels.INFO:
@@ -124,14 +145,13 @@ class OrderedLandmarksPlanner:
             current_linked_state.branches_to_explore = weighted_branches
             weighted_selected_branch = current_linked_state.branches_to_explore.pop(0)
 
-            current_state = current_linked_state.state
             selected_branch = weighted_selected_branch[:-1]
             current_cost += weighted_selected_branch[3]
 
             if self.verbosity == verbose_levels.DEBUG:
                 print(f"Selected branch to expand: {selected_branch[0].name} --[{selected_branch[1]}]--> {selected_branch[2].name}")
 
-            new_linked_state = self.expand_from_branch(current_state, weighted_selected_branch)
+            new_linked_state = self.expand_from_branch(current_linked_state, weighted_selected_branch)
             if not new_linked_state or (current_cost >= min_cost):
                 if self.verbosity == verbose_levels.DEBUG:
                     if not new_linked_state:
@@ -140,26 +160,24 @@ class OrderedLandmarksPlanner:
                         print(f"Current cost {current_cost} exceeded min cost {min_cost}.")
 
                 if len(current_linked_state.branches_to_explore) > 0:
-                    current_cost -= weighted_selected_branch[3]
                     print("Trying next branch from current state.")
                     continue
 
-                current_linked_state = self.backtrack(initial_state_id)
+                current_linked_state = self.backtrack(0)
                 continue
 
             current_linked_state = new_linked_state
-            self.steps += 1
 
             if self.domain.goal_reached:
                 goal_linked_states = current_linked_state
 
         return goal_linked_states, current_cost
 
-    def expand_from_branch(self, current_state: State, weighted_branch: Tuple[Node, str, Node, float]) -> LinkedState | None:
-        nav_cost, p_cost = 0.0, 0.0
+    def expand_from_branch(self, current_linked_state: LinkedState, weighted_branch: Tuple[Node, str, Node, float]) -> LinkedState | None:
+        self.steps += 1
         branch = weighted_branch[:-1]  # Remove cost
         branch_cost = weighted_branch[3]
-        branch_target_node = branch[2]
+        cost = current_linked_state.cost
 
         action_name, action_params, conds, effects, action_applicable = self.parse_action_from_branch(branch)
         action_args = []
@@ -173,15 +191,12 @@ class OrderedLandmarksPlanner:
             print(f"Action [{action_name}] not applicable.")
             return None
 
-        s_new = apply_action(current_state, conds, action_params, effects)
+        s_new = apply_action(current_linked_state.state, conds, action_params, effects)
 
         if action_name == 'move' and self.robot.gripper_empty:
-            nav_cost = branch_cost
-            p_cost = branch_target_node.values[-1].occupied_by.propagated_cost
-        else:
-            nav_cost = self.current_linked_state.costs[0]
+            cost += branch_cost
 
-        return self.expand_state(s_new, action, nav_cost, p_cost)
+        return self.expand_state(current_linked_state, s_new, action, cost)
 
     def branch_out(self, current_linked_state: LinkedState, heuristic: heuristic_types) -> List[Tuple[Node, str, Node, float]]:
         """
@@ -290,6 +305,9 @@ class OrderedLandmarksPlanner:
             Return a list of branches with their associated costs.
         """
         evaluated_branches = []
+        propagated_heuristics = [heuristic_types.LAZY_GREEDY_PROPAGATED,
+                                   heuristic_types.DILIGENT_GREEDY_PROPAGATED,
+                                   heuristic_types.GREEDY_NEIGHBOR_PROPAGATED]
 
         for branch in branches:
             node, action_name, target_node = branch
@@ -309,6 +327,12 @@ class OrderedLandmarksPlanner:
 
             if not action_applicable:
                 continue
+
+            if heuristic in propagated_heuristics:
+                blocks_obj_dict, block_positions = spawn_blocks(self.domain)
+                scaled_projected_vecs_lists, self.propagated_cost_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
+                # visualize_cost_propagation(blocks_obj_dict, block_positions,
+                                        #    self.propagated_cost_dict, scaled_projected_vecs_lists, self.robot.at.pos)
 
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
@@ -334,9 +358,11 @@ class OrderedLandmarksPlanner:
 
         return evaluated_branches
 
-    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False, p_discount_factor: float | None = None) -> float:
+    def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False) -> float:
         target_pos = target_node.values[-1].pos
-        cost = np.linalg.norm(np.array(current_pos) - np.array(target_pos))
+        ground_pt = (target_pos[0], target_pos[1], 0.5)
+        cost = np.linalg.norm(np.array(current_pos) - np.array(ground_pt))
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(target_pos))
 
         target_obj = target_node.values[-1].occupied_by
         target_obj = cast(Object, target_obj)
@@ -344,16 +370,17 @@ class OrderedLandmarksPlanner:
         target_obj_goal = cast(Pose, target_obj_goal)
 
         goal_pos = target_obj_goal.pos
-        cost += np.linalg.norm(np.array(target_pos) - np.array(goal_pos))
+        ground_pt = (goal_pos[0], goal_pos[1], 0.5)
+        cost += np.linalg.norm(np.array(target_pos) - np.array(ground_pt))
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(goal_pos))
 
         if propagate:
-            if not p_discount_factor:
-                p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
-            cost += target_obj.propagated_cost * p_discount_factor
+            p_cost = self.propagated_costs_dict.get(target_obj.name, 0.0)
+            cost += p_cost
 
         if self.verbosity == verbose_levels.INFO:
             if propagate:
-                print(f"Steps: {self.steps}, Propagated cost discount factor: {p_discount_factor:.2f}, Final cost: {cost:.2f}")
+                print(f"Steps: {self.steps}, Propagated cost: {p_cost:.2f}, Final cost: {cost:.2f}")
             else:
                 print(f"Steps: {self.steps}, Final cost: {cost:.2f}")
 
@@ -385,9 +412,7 @@ class OrderedLandmarksPlanner:
         cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1))
 
         if propagate:
-            if not p_discount_factor:
-                p_discount_factor = 1 - (self.steps / 2) / self.theoretical_min_steps
-            cost += target_obj.propagated_cost * p_discount_factor
+            cost += self.propagated_costs_dict.get(target_obj.name, 0.0)
 
         return cost.item()
 
@@ -443,8 +468,7 @@ class OrderedLandmarksPlanner:
 
             # Add distance between target's goal and neighbor to cost
             visited_node_count += 1
-            p_discount_factor = 1 - (self.steps + visited_node_count) / (2 * self.theoretical_min_steps)
-            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node, propagate, p_discount_factor)
+            cost += self.lazy_greedy_heuristic(target_goal_pos, neighbor_node, propagate)
 
             # Set neighbor as the new target and keep adding costs until all goal blocks are visited
             block = neighbor_obj
@@ -452,39 +476,34 @@ class OrderedLandmarksPlanner:
 
         return cost
 
-    def expand_state(self, s_new: State, action: Action, nav_cost: float = 0.0, p_cost: float = 0.0) -> LinkedState:
+    def expand_state(self, current_linked_state: LinkedState, s_new: State, action: Action, cost: float = 0.0) -> LinkedState:
         self.state_counter += 1
 
-        s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, self.current_linked_state), costs=[nav_cost, p_cost])
-        self.current_linked_state.weighted_edges.append((action[0], s_new_linked, nav_cost))
-
+        s_new_linked = LinkedState(self.state_counter, s_new, parent=(action, current_linked_state), cost=cost)
+        current_linked_state.weighted_edges.append((action[0], s_new_linked, cost))
         self.domain.update_state(s_new)
-        self.current_linked_state = s_new_linked
+
         if self.domain.goal_reached:
-            self.current_linked_state.type_ = StateStatus.GOAL
+            s_new_linked.type_ = StateStatus.GOAL
             self.goal_linked_states.append(s_new_linked)
             print(f"Goal reached at state id {s_new_linked.state_id}!, total goal states found: {len(self.goal_linked_states)}",
                   f"steps taken: {self.steps}, num goal blocks: {len(self.goal_blocks)}")
 
-        return self.current_linked_state
+        return s_new_linked
 
-    def retrace_action_sequence_back_to_root(self) -> Tuple[List[List[Action]], List[State]]:
+    def retrace_action_sequence_back_to_root(self, goal_linked_state: LinkedState) -> Tuple[List[Action], List[State]]:
         action_sequence = []
-        action_sequences = []
         states = []
+        state = goal_linked_state
 
-        for state in self.goal_linked_states:
-            while state.parent is not None:
-                action = state.parent[0]
-                action_sequence.insert(0, action)
+        while state.parent is not None:
+            action = state.parent[0]
+            action_sequence.insert(0, action)
 
-                states.insert(0, state.state)
-                state = state.parent[1]
+            states.insert(0, state.state)
+            state = state.parent[1]
 
-            action_sequences.append(action_sequence)
-            action_sequence = []
-
-        return action_sequences, states
+        return action_sequence, states
 
     def retrace_optimal_action_sequence_back_to_root(self) -> Tuple[List[Action], List[State]]:
         action_sequences = []
@@ -508,7 +527,7 @@ class OrderedLandmarksPlanner:
                 states.insert(0, state.state)
                 state = state.parent[1]
 
-                current_sequence_costs.insert(0, state.costs)
+                current_sequence_costs.insert(0, state.cost)
 
             action_sequences.append(action_sequence)
             sequence_costs.append(current_sequence_costs)
@@ -516,14 +535,9 @@ class OrderedLandmarksPlanner:
 
         for seq_costs in sequence_costs:
             total_cost = 0.0
-            seq_len = len(seq_costs)
 
-            for step_idx, step_costs in enumerate(seq_costs):
-                if not step_costs:
-                    continue
-
-                nav_cost, p_cost = step_costs
-                total_cost += nav_cost
+            for step_cost in seq_costs:
+                total_cost += step_cost
 
             total_sequence_costs.append(total_cost)
 
@@ -550,7 +564,7 @@ class OrderedLandmarksPlanner:
                 break
 
             if self.verbosity == verbose_levels.DEBUG:
-                print(f"Back track from {current_linked_state.state_id} to {current_linked_state.parent[1].state_id}, branches: {len(current_linked_state.parent[1].branches_to_explore)}")
+                print(f"Back track from {current_linked_state.state_id} to {current_linked_state.parent[1].state_id}, branches: {len(current_linked_state.parent[1].branches_to_explore)}, steps: {self.steps}")
 
             current_linked_state = current_linked_state.parent[1]
             self.domain.update_state(current_linked_state.state)
