@@ -18,12 +18,12 @@ heuristic_types = Enum('HeuristicType', 'NONE LAZY_GREEDY LAZY_GREEDY_PROPAGATED
 
 class OrderedLandmarksPlanner:
     def __init__(self, domain: Domain, dtg: Dict[str, Node], ocm: OccupancyGridMap,
-                 verbosity: verbose_levels = verbose_levels.NONE, greedy: bool = False):
+                 verbosity: verbose_levels = verbose_levels.NONE):
         self.domain = domain
         self.dtg = dtg
         self.ocm = ocm
         self.verbosity = verbosity
-        self.greedy = greedy
+        self.greedy = False
 
         self.goal_nodes = create_goal_nodes(self.domain, self.dtg)
         self.current_state = self.domain.current_state
@@ -43,8 +43,29 @@ class OrderedLandmarksPlanner:
         robot = domain.things.get(Robot, [])[0]
         self.robot = cast(Robot, robot)
 
+    def run_greedy_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> LinkedState | None:
+        self.greedy = True
+        min_cost = np.inf
+
+        nodes = query_nodes(self.dtg, self.domain.current_state)
+        nodes = self.prune_unrelated_nodes(nodes)
+
+        block_nodes = [node for node in nodes if not node.name.startswith('robot')]
+        goal_nodes = [node for node in self.goal_nodes.values()]
+        define_neighbor_preferences(block_nodes, goal_nodes)
+
+        # Define initial branches at root state
+        goal_linked_state, cost_to_goal = self.search_for_path_from_state_to_goal(self.s0, heuristic, min_cost)
+        if goal_linked_state:
+            print(f"Found goal linked state at cost: {cost_to_goal}, steps taken: {self.steps}")
+        else:
+            print(f"Could not reach goal from root state :(")
+
+        return goal_linked_state
+
     def run_optimal_ordered_landmarks_planner(self, heuristic: heuristic_types = heuristic_types.LAZY_GREEDY) -> Tuple[List[LinkedState], LinkedState]:
         goal_linked_states = []
+        self.greedy = False
         best_goal_linked_state = self.s0
         shortest_num_steps = np.inf
         min_cost = np.inf
@@ -104,12 +125,11 @@ class OrderedLandmarksPlanner:
 
     def search_for_path_from_state_to_goal(self, start_linked_state: LinkedState, heuristic: heuristic_types, min_cost: float) -> Tuple[LinkedState | None, float]:
         goal_linked_states = None
-        start_linked_state.branches_to_explore = self.branch_out(start_linked_state, heuristic)
-
         current_linked_state = start_linked_state
         current_cost = current_linked_state.cost
 
-        while not self.domain.goal_reached and current_linked_state.state_id != 0:
+        while not self.domain.goal_reached and ((self.greedy and (current_linked_state.state_id >= 0)) or \
+        (not self.greedy and (current_linked_state.state_id > 0))):
             self.current_linked_state = current_linked_state
             current_cost = current_linked_state.cost
 
