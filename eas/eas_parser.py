@@ -112,7 +112,7 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
         if i in visited_positions:
             continue
 
-        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=1.2, p=2)
+        pos_idx_in_stack = pos_tree.query_ball_point(pos, r=0.5, p=2)
         visited_positions.extend(pos_idx_in_stack)
 
         poses_in_stack = np.array(poses)[pos_idx_in_stack]
@@ -155,6 +155,21 @@ def build_physical_relations(domain: Domain) -> List[List[str]]:
                 occupied_obj = pose.occupied_by
                 if isinstance(occupied_obj, Object):
                     occupied_obj.at_top = True
+
+                if j > 0:
+                    below_pose = poses_in_stack[j-1]
+                    below_pose.below = pose
+                    pose.on = below_pose
+
+                    occupied_obj = pose.occupied_by
+                    below_obj = below_pose.occupied_by
+
+                    if type(occupied_obj) is Object:
+                        occupied_obj.at_top = True
+
+                        if type(below_obj) is Object:
+                            occupied_obj.on = below_obj
+                            below_obj.below = occupied_obj
 
         stacks.append([pose.name for pose in poses_in_stack])
 
