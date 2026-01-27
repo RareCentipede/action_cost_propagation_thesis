@@ -330,9 +330,9 @@ class OrderedLandmarksPlanner:
 
             if heuristic in propagated_heuristics:
                 blocks_obj_dict, block_positions = spawn_blocks(self.domain)
-                scaled_projected_vecs_lists, self.propagated_cost_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
+                scaled_projected_vecs_lists, self.propagated_costs_dict = perform_cost_propagation(blocks_obj_dict, block_positions)
                 # visualize_cost_propagation(blocks_obj_dict, block_positions,
-                                        #    self.propagated_cost_dict, scaled_projected_vecs_lists, self.robot.at.pos)
+                                        #    self.propagated_costs_dict, scaled_projected_vecs_lists, self.robot.at.pos)
 
             match heuristic:
                 case heuristic_types.LAZY_GREEDY:
@@ -361,8 +361,8 @@ class OrderedLandmarksPlanner:
     def lazy_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False) -> float:
         target_pos = target_node.values[-1].pos
         ground_pt = (target_pos[0], target_pos[1], 0.5)
-        cost = np.linalg.norm(np.array(current_pos) - np.array(ground_pt))
-        cost += np.linalg.norm(np.array(ground_pt) - np.array(target_pos))
+        cost = np.linalg.norm(np.array(current_pos) - np.array(ground_pt)).item()
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(target_pos)).item()
 
         target_obj = target_node.values[-1].occupied_by
         target_obj = cast(Object, target_obj)
@@ -371,12 +371,12 @@ class OrderedLandmarksPlanner:
 
         goal_pos = target_obj_goal.pos
         ground_pt = (goal_pos[0], goal_pos[1], 0.5)
-        cost += np.linalg.norm(np.array(target_pos) - np.array(ground_pt))
-        cost += np.linalg.norm(np.array(ground_pt) - np.array(goal_pos))
+        cost += np.linalg.norm(np.array(target_pos) - np.array(ground_pt)).item()
+        cost += np.linalg.norm(np.array(ground_pt) - np.array(goal_pos)).item()
 
         if propagate:
             p_cost = self.propagated_costs_dict.get(target_obj.name, 0.0)
-            cost += p_cost
+            cost = 0.1*cost + p_cost
 
         if self.verbosity == verbose_levels.INFO:
             if propagate:
@@ -384,7 +384,7 @@ class OrderedLandmarksPlanner:
             else:
                 print(f"Steps: {self.steps}, Final cost: {cost:.2f}")
 
-        return cost.item()
+        return cost
 
     def diligent_greedy_heuristic(self, current_pos: Tuple[float, float, float], target_node: Node, propagate: bool = False, p_discount_factor: float | None = None) -> float:
         cost = 0.0
@@ -409,12 +409,13 @@ class OrderedLandmarksPlanner:
         goal = (target_goal_pos[0], target_goal_pos[1])    
 
         path_block_to_goal = np.array(astar(graph, self.ocm.oc_grid, start, goal))
-        cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1))
+        cost += np.sum(np.linalg.norm(np.diff(path_block_to_goal, axis=0), axis=1)).item()
 
         if propagate:
-            cost += self.propagated_costs_dict.get(target_obj.name, 0.0)
+            p_cost = self.propagated_costs_dict.get(target_obj.name, 0.0)
+            cost = 0.1*cost + p_cost
 
-        return cost.item()
+        return cost
 
     def greedy_neighbor_heuristic(self, target_node: Node, propagate: bool = False) -> float:
         cost = 0.0
