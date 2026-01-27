@@ -61,7 +61,7 @@ def perform_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions
 
         dists, projected_vecs_scaling_factors, scaled_projected_vecs = compute_dists_from_point_to_vec(np.array(other_block_positions), init_goal_vec, np.array(init_pos))
 
-        influence_radius = 1.0
+        influence_radius = 0.5
         for i in range(len(dists)):
             dist = dists[i]
             scaling = projected_vecs_scaling_factors[i]
@@ -86,7 +86,6 @@ def perform_cost_propagation(blocks_obj_dict: Dict[str, Object], block_positions
                 #     dist: {dist}, scaling: {scaling}, (total cost: {propagated_cost_dict[p_dict_key]:.1f})")
 
         scaled_projected_vecs_lists.append(scaled_projected_vecs)
-    
     return scaled_projected_vecs_lists, propagated_cost_dict
 
 def compute_dists_from_point_to_vec(points: np.ndarray, vector: np.ndarray, start_point: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
