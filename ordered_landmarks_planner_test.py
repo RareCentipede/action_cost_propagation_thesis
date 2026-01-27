@@ -11,8 +11,10 @@ from cost_propagation.cost_propagation import spawn_blocks, perform_cost_propaga
 from mapping.oc_map import OccupancyGridMap
 from mapping.path_planner import create_nx_nodes, astar
 
+SIMULATE: bool = False
+
 def main():
-    config_name = "basic_many"
+    config_name = "pen"
     problem_config_path = "config/problem_configs/"
 
     block_domain = parse_configs(domain, config_name, problem_config_path)
@@ -38,10 +40,10 @@ def main():
     # visualize_cost_propagation(blocks_obj_dict, block_positions, propagated_cost_dict, scaled_projected_vecs_lists, robot_pos=robot.at.pos)
 
     ap = OrderedLandmarksPlanner(block_domain, dtg, oc_map, verbose_levels.NONE)
-    # goal_linked_states, best_goal_linked_state = ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
-    # goal_linked_state = best_goal_linked_state
+    goal_linked_states, best_goal_linked_state = ap.run_optimal_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY)
+    goal_linked_state = best_goal_linked_state
 
-    goal_linked_state = ap.run_greedy_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY_PROPAGATED)
+    # goal_linked_state = ap.run_greedy_ordered_landmarks_planner(heuristic_types.LAZY_GREEDY_PROPAGATED)
 
     if goal_linked_state is None:
         print("No goal linked state found 😢")
@@ -99,9 +101,10 @@ def main():
 
         print(f"Total path cost of the plan: {total_path_cost:.2f}")
 
-        # cd = CommandDispatcher(block_domain)
-        # cd.initialize_objects()
-        # cd.run_simulation(plan)
+        if SIMULATE:
+            cd = CommandDispatcher(block_domain)
+            cd.initialize_objects()
+            cd.run_simulation(plan)
 
     else:
         print("No plan found 😢")
