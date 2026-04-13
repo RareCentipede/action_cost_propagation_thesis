@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Tuple, List, NewType, Dict, Union, Callable, Type, ClassVar, cast
 from copy import deepcopy
-    
+
 State = NewType('State', Dict[str, Any]) # {object_name}_{variable_name}: value
 Action = NewType('Action', Tuple[str, List[Any]]) # (action_name, [param1, param2, ...])
 ConditionType = Enum('ConditionType', 'SIMPLE COMPUTED')
